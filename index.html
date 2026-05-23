@@ -1277,6 +1277,77 @@
             0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.8; }
             50% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
         }
+
+        /* ════════ DYNAMIC FLYING ROCKET ════════ */
+        .rocket-track {
+            position: relative;
+            height: 48px;
+            margin: 14px 0;
+            width: 100%;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 10px;
+            border: 1px dashed var(--b2);
+            overflow: hidden;
+        }
+
+        .rocket-ship {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%) rotate(90deg); /* point right */
+            left: 0%;
+            width: 28px;
+            height: 28px;
+            transition: left 0.15s linear;
+            filter: drop-shadow(0 0 6px var(--accent));
+        }
+
+        .rocket-ship svg {
+            width: 100%;
+            height: 100%;
+            stroke: var(--accent);
+            fill: rgba(91, 141, 238, 0.2);
+            stroke-width: 2.2;
+        }
+
+        .rocket-ship-flame {
+            position: absolute;
+            top: 50%;
+            left: -10px;
+            transform: translateY(-50%) rotate(-90deg); /* point left */
+            width: 6px;
+            height: 12px;
+            background: linear-gradient(to bottom, #ffea00, #ff4c00, transparent);
+            border-radius: 50% 50% 20% 20%;
+            animation: flame-flicker 0.1s ease-in-out infinite alternate;
+        }
+
+        .space-stars {
+            position: absolute;
+            inset: 0;
+            background-image: 
+                radial-gradient(1px 1px at 20px 15px, #eee, transparent),
+                radial-gradient(1px 1px at 75px 8px, #fff, transparent),
+                radial-gradient(1.5px 1.5px at 150px 25px, #a5c3ff, transparent),
+                radial-gradient(1px 1px at 220px 12px, #fff, transparent),
+                radial-gradient(1px 1px at 280px 22px, #eee, transparent),
+                radial-gradient(1.5px 1.5px at 350px 10px, #a5c3ff, transparent),
+                radial-gradient(1px 1px at 450px 18px, #fff, transparent),
+                radial-gradient(1px 1px at 550px 26px, #eee, transparent),
+                radial-gradient(1.5px 1.5px at 620px 8px, #a5c3ff, transparent);
+            background-repeat: repeat-x;
+            opacity: 0.35;
+            animation: space-scroll 8s linear infinite;
+        }
+
+        @keyframes space-scroll {
+            from { background-position: 0 0; }
+            to { background-position: -680px 0; }
+        }
+
+        @keyframes flame-flicker {
+            0% { height: 10px; opacity: 0.8; }
+            100% { height: 15px; opacity: 1; filter: brightness(1.2); }
+        }
     </style>
 </head>
 
@@ -1295,8 +1366,7 @@
                     </svg></div>
                 <span class="ln">WayToShare</span>
             </div>
-            <h1>Drop files <em>instantly</em></h1>
-            <p class="tagline">// secure · target mobile number</p>
+
         </header>
 
         <div class="card auth-card-width">
@@ -1310,7 +1380,7 @@
 
             <div class="auth-container">
                 <label for="auth-mobile" class="sr-only">Mobile Number</label>
-                <input class="auth-input" id="auth-mobile" placeholder="Mobile Number (e.g. 1234567890)" aria-label="Your Mobile Number" />
+                <input class="auth-input" id="auth-mobile" placeholder="Mobile Number" aria-label="Your Mobile Number" />
                 <label for="auth-password" class="sr-only">Password</label>
                 <input class="auth-input" type="password" id="auth-password" placeholder="Password" aria-label="Your Password" />
 
@@ -1354,7 +1424,7 @@
                             <span>Logged in as:</span>
                             <strong id="logged-in-mobile"></strong>
                         </div>
-                        <button class="btn bh bsm dropdown-btn" type="button" onclick="handleLogout()" aria-label="Log out of account">
+                        <button class="btn bh bsm dropdown-btn" type="button" onclick="handleLogout()" style="margin-top: 4px;" aria-label="Log out of account">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px; margin-right: 6px;" aria-hidden="true" focusable="false">
                                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
                                 <polyline points="16 17 21 12 16 7" />
@@ -1489,6 +1559,17 @@
                         </div>
                         <div id="sprog" style="display:none" class="prog">
                             <div class="pt"><span id="sprogn"></span><span id="sprogp">0%</span></div>
+                            <div class="rocket-track">
+                                <div class="space-stars"></div>
+                                <div class="rocket-ship" id="sprogr">
+                                    <div class="rocket-ship-flame"></div>
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false">
+                                        <path d="M4.5 16.5c-1.5 1.5-2.5 3.5-2.5 5.5C4 22 6 21 7.5 19.5" />
+                                        <path d="M12 2C6 2 2 6 2 12c0 3.5 1.5 6.5 3.5 8.5C7.5 18 10.5 16 12 16c1.5 0 4.5 2 6.5 4.5 2-2 3.5-5 3.5-8.5C22 6 18 2 12 2z" />
+                                        <path d="M9 12a3 3 0 1 0 6 0 3 3 0 1 0-6 0z" />
+                                    </svg>
+                                </div>
+                            </div>
                             <div class="pb">
                                 <div class="pf" id="sprogf"></div>
                             </div>
@@ -1531,6 +1612,17 @@
                         </div>
                         <div id="rprog" style="display:none" class="prog">
                             <div class="pt"><span id="rprogn"></span><span id="rprogp">0%</span></div>
+                            <div class="rocket-track">
+                                <div class="space-stars"></div>
+                                <div class="rocket-ship" id="rprogr">
+                                    <div class="rocket-ship-flame"></div>
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false">
+                                        <path d="M4.5 16.5c-1.5 1.5-2.5 3.5-2.5 5.5C4 22 6 21 7.5 19.5" />
+                                        <path d="M12 2C6 2 2 6 2 12c0 3.5 1.5 6.5 3.5 8.5C7.5 18 10.5 16 12 16c1.5 0 4.5 2 6.5 4.5 2-2 3.5-5 3.5-8.5C22 6 18 2 12 2z" />
+                                        <path d="M9 12a3 3 0 1 0 6 0 3 3 0 1 0-6 0z" />
+                                    </svg>
+                                </div>
+                            </div>
                             <div class="pb">
                                 <div class="pf" id="rprogf"></div>
                             </div>
@@ -1556,7 +1648,7 @@
                             <input class="auth-input" id="dev-mobile" placeholder="Device Mobile Number" aria-label="Device Mobile Number" />
                             <label for="dev-alias" class="sr-only">Device Alias Name</label>
                             <input class="auth-input" id="dev-alias"
-                                placeholder="Alias Name (e.g. My Laptop, Dad's Phone)" aria-label="Device Alias Name" />
+                                placeholder="Alias Name" aria-label="Device Alias Name" />
                             <div id="dev-error" class="auth-error"></div>
                             <div class="brow" style="margin-top: 8px">
                                 <button class="btn bp" type="button" onclick="handleAddDevice()" aria-label="Connect Device">Connect Device</button>
@@ -1610,43 +1702,20 @@
             alert("Promise Error: " + (e.reason ? e.reason.message || e.reason : e.reason));
         });
 
-        // On-screen diagnostics overlay logging
-        function uilog(msg, isError = false) {
-            const logsDiv = document.getElementById('diagnostics-logs');
-            if (!logsDiv) return;
-            const entry = document.createElement('div');
-            entry.style.color = isError ? 'var(--red)' : '#fff';
-            entry.style.borderBottom = '1px dashed var(--b1)';
-            entry.style.paddingBottom = '2px';
-            entry.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
-            logsDiv.appendChild(entry);
-            logsDiv.scrollTop = logsDiv.scrollHeight;
-        }
+        // ══════════════════════════════════════════════════════
+        //  ⚙  Server & API configuration
+        // ══════════════════════════════════════════════════════
+        const isApp = window.location.origin.startsWith('capacitor:') || 
+                      window.location.origin.startsWith('file:') || 
+                      (window.location.origin.startsWith('http://localhost') && window.location.port !== '3001' && window.location.port !== '3000') ||
+                      !!window.Capacitor;
 
-        // Intercept console messages and show them in our overlay
-        const _log = console.log;
-        const _error = console.error;
-        const _warn = console.warn;
-        console.log = function(...args) {
-            _log.apply(console, args);
-            uilog(args.join(' '));
-        };
-        console.error = function(...args) {
-            _error.apply(console, args);
-            uilog(args.join(' '), true);
-        };
-        console.warn = function(...args) {
-            _warn.apply(console, args);
-            uilog(args.join(' '), true);
-        };
-
-        // ══════════════════════════════════════════════════════
-        //  ⚙  Signaling server URL auto-detected
-        // ══════════════════════════════════════════════════════
-        const SIG_URL = window.location.host
-            ? (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host
-            : 'ws://localhost:3001';
-        // ══════════════════════════════════════════════════════
+        // Default to localhost if running on a local development origin, else fallback to production URL
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const defaultServer = isLocal ? window.location.origin : 'https://waytoshare.onrender.com';
+        
+        const API_BASE_URL = defaultServer.endsWith('/') ? defaultServer.slice(0, -1) : defaultServer;
+        const SIG_URL = API_BASE_URL.replace(/^http/, 'ws');
 
         const ICE = {
             iceServers: [
@@ -1665,6 +1734,7 @@
         let activeSenderMobile = null;
         let relayTimeout = null;
         let fileWritable = null, useMemoryBuffer = false, meta = null, chunks = [], rcvd = 0;
+        let writeQueue = Promise.resolve();
 
         function trackStates(pc, name) {
             pc.onconnectionstatechange = () => {
@@ -1701,7 +1771,7 @@
             if (body) {
                 options.body = JSON.stringify(body);
             }
-            const res = await fetch(endpoint, options);
+            const res = await fetch(API_BASE_URL + endpoint, options);
             const data = await res.json();
             if (!res.ok) {
                 throw new Error(data.error || 'Request failed');
@@ -1750,7 +1820,7 @@
             const endpoint = authMode === 'login' ? '/api/login' : '/api/register';
 
             try {
-                const res = await fetch(endpoint, {
+                const res = await fetch(API_BASE_URL + endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ mobile, password })
@@ -1897,13 +1967,17 @@
 
             const total = selFile.size;
             let offset = 0;
-            const chunkSize = 65536; // 64KB chunks
+            const chunkSize = 16384 * 8; // 128KB chunks
 
             async function pump() {
-                if (offset < total) {
-                    const end = Math.min(offset + chunkSize, total);
-                    const slice = selFile.slice(offset, end);
-                    try {
+                try {
+                    while (offset < total) {
+                        if (wsConn.bufferedAmount > 2097152) { // 2MB buffer limit
+                            setTimeout(pump, 10);
+                            return;
+                        }
+                        const end = Math.min(offset + chunkSize, total);
+                        const slice = selFile.slice(offset, end);
                         const base64 = await blobToBase64(slice);
                         sendWs({
                             type: 'relay-chunk',
@@ -1914,13 +1988,10 @@
                         const pct = Math.round(offset / total * 100);
                         $('sprogf').style.width = pct + '%';
                         $('sprogp').textContent = pct + '%';
-                        
-                        setTimeout(pump, 10);
-                    } catch (err) {
-                        console.error("Relay transfer read/send error:", err);
-                        status('speer', 'err', 'Relay transfer error.');
+                        const ro = $('sprogr');
+                        if (ro) ro.style.left = `calc(${pct}% - (${pct} / 100 * 28px))`;
                     }
-                } else {
+                    
                     status('sdone', 'ok', 'Transfer complete (via Relay)!');
                     done('sd3');
 
@@ -1931,6 +2002,9 @@
                         peerMobile: $('target-mobile').value.trim(),
                         status: 'success'
                     }).catch(e => console.error('Failed to log transfer history:', e));
+                } catch (err) {
+                    console.error("Relay transfer read/send error:", err);
+                    status('speer', 'err', 'Relay transfer error.');
                 }
             }
 
@@ -1944,7 +2018,8 @@
             $('rprogp').textContent = pct + '%';
 
             if (fileWritable) {
-                await fileWritable.write(dataBuffer);
+                // Queue the write promise to guarantee in-order, non-overlapping disk writes
+                writeQueue = writeQueue.then(() => fileWritable.write(dataBuffer));
             } else if (useMemoryBuffer) {
                 chunks.push(dataBuffer);
             }
@@ -1954,26 +2029,49 @@
                 status('rstat', 'ok', 'Transfer complete!');
                 
                 if (fileWritable) {
-                    await fileWritable.close();
-                    fileWritable = null;
+                    try {
+                        await writeQueue; // await all pending write operations
+                        await fileWritable.close();
+                        fileWritable = null;
+                        
+                        const el = document.createElement('div');
+                        el.className = 'ri';
+                        el.innerHTML = `
+                            <svg viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;flex-shrink:0;">
+                                <circle cx="12" cy="12" r="10" />
+                                <polyline points="12 8 12 12 16 14" />
+                            </svg>
+                            <span class="rn">${meta.name}</span>
+                            <span class="rs">${fmt(meta.size)}</span>
+                            <span style="color:var(--green); font-size:0.76rem; font-family:var(--mono); font-weight: 600;">Saved directly to disk</span>
+                        `;
+                        $('rfiles').appendChild(el);
+                    } catch (err) {
+                        console.error("Error finalizing file write:", err);
+                        status('rstat', 'err', 'File save error: ' + err.message);
+                    }
+                } else if (useMemoryBuffer) {
+                    const url = URL.createObjectURL(new Blob(chunks, { type: meta.mime || 'application/octet-stream' }));
+                    
+                    // Auto-trigger browser download
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = meta.name;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
                     
                     const el = document.createElement('div');
                     el.className = 'ri';
                     el.innerHTML = `
                         <svg viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;flex-shrink:0;">
-                            <circle cx="12" cy="12" r="10" />
-                            <polyline points="12 8 12 12 16 14" />
+                            <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
+                            <polyline points="13 2 13 9 20 9"/>
                         </svg>
                         <span class="rn">${meta.name}</span>
                         <span class="rs">${fmt(meta.size)}</span>
-                        <span style="color:var(--green); font-size:0.76rem; font-family:var(--mono); font-weight: 600;">Saved directly to disk</span>
+                        <span style="color:var(--green); font-size:0.76rem; font-family:var(--mono); font-weight: 600;">Downloaded automatically</span>
                     `;
-                    $('rfiles').appendChild(el);
-                } else if (useMemoryBuffer) {
-                    const url = URL.createObjectURL(new Blob(chunks, { type: meta.mime || 'application/octet-stream' }));
-                    const el = document.createElement('div');
-                    el.className = 'ri';
-                    el.innerHTML = `<svg viewBox="0 0 24 24"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg><span class="rn">${meta.name}</span><span class="rs">${fmt(meta.size)}</span><a href="${url}" download="${meta.name}">↓ Download</a>`;
                     $('rfiles').appendChild(el);
                 }
 
@@ -1987,108 +2085,13 @@
             }
         }
 
-        async function showIncomingAcceptPrompt(meta, channelOrMode) {
-            $('rwait').style.display = 'none';
-            
-            const el = document.createElement('div');
-            el.id = 'accept-prompt-card';
-            el.className = 'card';
-            el.style.border = '1px solid var(--accent)';
-            el.style.boxShadow = '0 4px 16px rgba(91, 141, 238, 0.15)';
-            
-            const hasFileSystemAccess = typeof window.showSaveFilePicker === 'function';
-            
-            el.innerHTML = `
-                <div class="ch">
-                    <div class="sd blue">📩</div>
-                    <div>
-                        <div class="ct">Incoming File Offer</div>
-                        <div class="cs">from target mobile device</div>
-                    </div>
-                </div>
-                <div style="background: var(--s2); border: 1px solid var(--b2); border-radius:10px; padding:12px; margin-bottom:12px;">
-                    <div style="font-family:var(--mono); font-size:0.8rem; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${meta.name}</div>
-                    <div style="font-family:var(--mono); font-size:0.72rem; color:var(--muted); margin-top:2px;">Size: ${fmt(meta.size)}</div>
-                </div>
-                ${!hasFileSystemAccess && meta.size > 1.5 * 1024 * 1024 * 1024 ? `
-                    <div class="st err" style="margin-bottom:12px; font-size:0.74rem;">
-                        <div class="dot"></div>
-                        <span>Warning: This file is very large (${fmt(meta.size)}). Your browser doesn't support streaming to disk, so receiving it might crash your tab. Please use Chrome or Edge for large files.</span>
-                    </div>
-                ` : ''}
-                <div class="brow">
-                    <button class="btn bp bsm" id="accept-save-btn" type="button" aria-label="Accept incoming file offer and save to disk">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;">
-                            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-                            <polyline points="17 21 17 13 7 13 7 21"/>
-                            <polyline points="7 3 7 8 15 8"/>
-                        </svg>
-                        Accept & Save to Disk
-                    </button>
-                    <button class="btn bh bsm" id="reject-btn" type="button" style="border-color:var(--red); color:var(--red);" aria-label="Decline incoming file offer">Decline</button>
-                </div>
-            `;
-            
-            $('rfiles').appendChild(el);
-            
-            $('accept-save-btn').onclick = async () => {
-                $('accept-save-btn').disabled = true;
-                $('reject-btn').disabled = true;
-                
-                if (hasFileSystemAccess) {
-                    try {
-                        const handle = await window.showSaveFilePicker({
-                            suggestedName: meta.name
-                        });
-                        fileWritable = await handle.createWritable();
-                        
-                        el.remove();
-                        
-                        $('rprog').style.display = 'block';
-                        $('rprogn').textContent = meta.name;
-                        $('rprogf').style.width = '0%';
-                        $('rprogp').textContent = '0%';
-                        
-                        if (channelOrMode === 'relay') {
-                            sendWs({ type: 'relay-accept', room: activeRoom });
-                        } else {
-                            channelOrMode.send(JSON.stringify({ t: 'ready' }));
-                        }
-                    } catch (err) {
-                        $('accept-save-btn').disabled = false;
-                        $('reject-btn').disabled = false;
-                        console.error("Save file picker error:", err);
-                    }
-                } else {
-                    useMemoryBuffer = true;
-                    el.remove();
-                    
-                    $('rprog').style.display = 'block';
-                    $('rprogn').textContent = meta.name;
-                    $('rprogf').style.width = '0%';
-                    $('rprogp').textContent = '0%';
-                    
-                    if (channelOrMode === 'relay') {
-                        sendWs({ type: 'relay-accept', room: activeRoom });
-                    } else {
-                        channelOrMode.send(JSON.stringify({ t: 'ready' }));
-                    }
-                }
-            };
-            
-            $('reject-btn').onclick = () => {
-                el.remove();
-                $('rwait').style.display = 'block';
-                if (channelOrMode === 'relay') {
-                    sendWs({ type: 'relay-reject', room: activeRoom });
-                } else {
-                    channelOrMode.close();
-                }
-            };
-        }
+
 
         function connectWebSocket() {
-            if (wsConn && wsConn.readyState === 1) return;
+            if (wsConn && wsConn.readyState === 1) {
+                sendWs({ type: 'auth', mobile: currentUserMobile });
+                return;
+            }
 
             wsConn = new WebSocket(SIG_URL);
 
@@ -2279,8 +2282,20 @@
                     chunks = [];
                     rcvd = 0;
                     fileWritable = null;
-                    useMemoryBuffer = false;
-                    showIncomingAcceptPrompt(meta, 'relay');
+                    useMemoryBuffer = true;
+                    writeQueue = Promise.resolve();
+                    
+                    // Auto accept relay transfer
+                    sendWs({ type: 'relay-accept', room: activeRoom });
+                    
+                    // Show progress UI immediately
+                    $('rwait').style.display = 'none';
+                    $('rprog').style.display = 'block';
+                    $('rprogn').textContent = meta.name;
+                    $('rprogf').style.width = '0%';
+                    $('rprogp').textContent = '0%';
+                    const ro = $('rprogr');
+                    if (ro) ro.style.left = '0px';
                 }
 
                 if (msg.type === 'relay-accept') {
@@ -2498,36 +2513,49 @@
 
             const total = selFile.size;
             let offset = 0;
-            const chunkSize = 65536; // 64KB chunks
+            const chunkSize = 16384 * 16; // 256KB chunk size (less system/browser overhead)
+            const bufferLimit = 1048576 * 2; // 2MB buffer limit
+
+            sCh.bufferedAmountLowThreshold = 1048576; // 1MB threshold triggers onbufferedamountlow event
 
             async function pump() {
-                while (offset < total) {
-                    if (sCh.bufferedAmount > 1048576) { // 1MB buffer limit
-                        setTimeout(pump, 20);
-                        return;
+                try {
+                    while (offset < total) {
+                        if (sCh.bufferedAmount > bufferLimit) {
+                            return; // Stop sending and wait for onbufferedamountlow event
+                        }
+                        const end = Math.min(offset + chunkSize, total);
+                        const slice = selFile.slice(offset, end);
+                        const chunk = await slice.arrayBuffer();
+                        sCh.send(chunk);
+                        offset = end;
+                        
+                        const pct = Math.round(offset / total * 100);
+                        $('sprogf').style.width = pct + '%';
+                        $('sprogp').textContent = pct + '%';
+                        const ro = $('sprogr');
+                        if (ro) ro.style.left = `calc(${pct}% - (${pct} / 100 * 28px))`;
                     }
-                    const end = Math.min(offset + chunkSize, total);
-                    const slice = selFile.slice(offset, end);
-                    const chunk = await slice.arrayBuffer();
-                    sCh.send(chunk);
-                    offset = end;
                     
-                    const pct = Math.round(offset / total * 100);
-                    $('sprogf').style.width = pct + '%';
-                    $('sprogp').textContent = pct + '%';
-                }
-                
-                status('sdone', 'ok', 'Transfer complete!');
-                done('sd3');
+                    status('sdone', 'ok', 'Transfer complete!');
+                    done('sd3');
 
-                apiRequest('/api/history', 'POST', {
-                    fileName: selFile.name,
-                    fileSize: selFile.size,
-                    direction: 'sent',
-                    peerMobile: $('target-mobile').value.trim(),
-                    status: 'success'
-                }).catch(e => console.error('Failed to log transfer history:', e));
+                    apiRequest('/api/history', 'POST', {
+                        fileName: selFile.name,
+                        fileSize: selFile.size,
+                        direction: 'sent',
+                        peerMobile: $('target-mobile').value.trim(),
+                        status: 'success'
+                    }).catch(e => console.error('Failed to log transfer history:', e));
+                } catch (err) {
+                    console.error("Error sending file chunk:", err);
+                    status('speer', 'err', 'Error sending file: ' + err.message);
+                }
             }
+
+            sCh.onbufferedamountlow = () => {
+                pump();
+            };
 
             pump();
         }
@@ -2549,8 +2577,20 @@
                             chunks = [];
                             rcvd = 0;
                             fileWritable = null;
-                            useMemoryBuffer = false;
-                            showIncomingAcceptPrompt(meta, ch);
+                            useMemoryBuffer = true;
+                            writeQueue = Promise.resolve();
+                            
+                            // Auto accept WebRTC transfer
+                            ch.send(JSON.stringify({ t: 'ready' }));
+                            
+                            // Show progress UI immediately
+                            $('rwait').style.display = 'none';
+                            $('rprog').style.display = 'block';
+                            $('rprogn').textContent = meta.name;
+                            $('rprogf').style.width = '0%';
+                            $('rprogp').textContent = '0%';
+                            const ro = $('rprogr');
+                            if (ro) ro.style.left = '0px';
                         }
                     } catch(e) {
                         console.error("Receiver JSON error:", e);
@@ -2703,15 +2743,7 @@
         const tabObserver = new MutationObserver(sanitizeTabindex);
         tabObserver.observe(document.documentElement, { childList: true, subtree: true });
     </script>
-    
-    <!-- Floating Diagnostics Panel for WebRTC debug -->
-    <div id="diagnostics-panel" style="position:fixed; bottom:10px; right:10px; width:340px; max-height:220px; background:rgba(12,14,20,0.95); border:1.5px solid var(--accent); border-radius:10px; padding:10px; font-family:var(--mono); font-size:10px; color:#fff; overflow-y:auto; z-index:9999; box-shadow:0 4px 20px rgba(0,0,0,0.5); pointer-events:auto; display:block;">
-        <div style="font-weight:bold; border-bottom:1px solid var(--b1); padding-bottom:4px; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
-            <span style="color:var(--accent)">SYSTEM LOGS (DIAGNOSTICS)</span>
-            <button onclick="document.getElementById('diagnostics-panel').style.display='none'" style="background:none; border:none; color:var(--red); cursor:pointer; font-weight:bold; font-size:11px;">[X]</button>
-        </div>
-        <div id="diagnostics-logs" style="display:flex; flex-direction:column; gap:4px; max-height:160px; overflow-y:auto;"></div>
-    </div>
+
 
 
 </body>
