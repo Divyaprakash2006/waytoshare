@@ -57,6 +57,17 @@ async function getAuthUser(req) {
 
 // Create HTTP server serving APIs and static index.html
 const server = http.createServer((req, res) => {
+    // Enable CORS for cross-origin requests (e.g. from the Capacitor app)
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-user-mobile');
+
+    // Handle OPTIONS preflight requests
+    if (req.method === 'OPTIONS') {
+        res.writeHead(204);
+        res.end();
+        return;
+    }
     // --- Register API ---
     if (req.method === 'POST' && req.url === '/api/register') {
         let body = '';
