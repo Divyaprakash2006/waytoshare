@@ -1,0 +1,2449 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WayToShare - Target P2P File Drop</title>
+    <meta name="description" content="WayToShare is a secure, instant, peer-to-peer (P2P) file sharing tool using direct WebRTC channels and mobile target routing with zero server storage." />
+    <meta name="keywords" content="P2P sharing, WebRTC file transfer, FileDrop, secure direct sharing, mobile target routing" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <style>
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0
+        }
+
+        :root {
+            --bg: #0c0e14;
+            --s1: #12151c;
+            --s2: #181c25;
+            --s3: #1e232e;
+            --b1: #252c3a;
+            --b2: #2e3748;
+            --accent: #5b8dee;
+            --green: #2ecc8a;
+            --amber: #f0a500;
+            --red: #f06262;
+            --purple: #9b72f0;
+            --text: #dde3f0;
+            --muted: #8898b5;
+            --mono: 'JetBrains Mono', monospace;
+            --sans: 'Outfit', sans-serif;
+        }
+
+        html,
+        body {
+            min-height: 100%
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--sans);
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden;
+        }
+
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: radial-gradient(ellipse 70% 35% at 50% 0%, rgba(91, 141, 238, .08), transparent 65%);
+            pointer-events: none;
+            z-index: 0
+        }
+
+        /* ════════ AUTH SCREEN LAYOUT ════════ */
+        .auth-wrap {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 36px 16px 64px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .auth-logo-hdr {
+            text-align: center;
+            margin-bottom: 36px;
+        }
+
+        .auth-logo-hdr .logo {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+
+        .auth-logo-hdr .lb {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--accent), var(--purple));
+            box-shadow: 0 4px 14px rgba(91, 141, 238, 0.25);
+            display: grid;
+            place-items: center;
+            transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
+        }
+
+        .auth-logo-hdr .logo:hover .lb {
+            transform: scale(1.08) rotate(5deg);
+            box-shadow: 0 6px 20px rgba(91, 141, 238, 0.4);
+        }
+
+        .auth-logo-hdr .lb svg {
+            width: 22px;
+            height: 22px;
+            stroke: #fff;
+            fill: none;
+            stroke-width: 2.2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .auth-logo-hdr .ln {
+            font-size: 1.45rem;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            background: linear-gradient(90deg, #ffffff, #a5c3ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .auth-logo-hdr h1 {
+            font-size: clamp(1.7rem, 5vw, 2.3rem);
+            font-weight: 800;
+            letter-spacing: -.04em;
+            line-height: 1.1;
+        }
+
+        .auth-logo-hdr h1 em {
+            font-style: normal;
+            color: var(--accent);
+        }
+
+        .auth-logo-hdr .tagline {
+            color: var(--muted);
+            font-family: var(--mono);
+            font-size: .78rem;
+            margin-top: 7px;
+        }
+
+        .auth-card-width {
+            width: 100%;
+            max-width: 440px;
+        }
+
+        .auth-container {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .auth-input {
+            font-family: var(--mono);
+            font-size: 1rem;
+            background: var(--s2);
+            border: 1.5px solid var(--b2);
+            border-radius: 10px;
+            padding: 14px;
+            color: var(--text);
+            outline: none;
+            width: 100%;
+            transition: border-color .15s;
+        }
+
+        .auth-input:focus {
+            border-color: var(--accent);
+        }
+
+        .auth-error {
+            color: var(--red);
+            font-family: var(--mono);
+            font-size: 0.76rem;
+            background: rgba(232, 85, 85, 0.08);
+            border: 1px solid rgba(232, 85, 85, 0.2);
+            padding: 10px;
+            border-radius: 8px;
+            display: none;
+        }
+
+
+        /* ════════ DASHBOARD LAYOUT ════════ */
+        .dashboard {
+            display: flex;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Sidebar Styling */
+        .sidebar {
+            width: 280px;
+            background: var(--s1);
+            border-right: 1px solid var(--b1);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 30px 20px;
+            flex-shrink: 0;
+            height: 100%;
+        }
+
+        .sidebar-top {
+            display: flex;
+            flex-direction: column;
+            gap: 32px;
+        }
+
+        .sidebar-logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .sidebar-logo .lb {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--accent), var(--purple));
+            box-shadow: 0 4px 14px rgba(91, 141, 238, 0.25);
+            display: grid;
+            place-items: center;
+            transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
+        }
+
+        .sidebar-logo:hover .lb {
+            transform: scale(1.08) rotate(5deg);
+            box-shadow: 0 6px 20px rgba(91, 141, 238, 0.4);
+        }
+
+        .sidebar-logo .lb svg {
+            width: 22px;
+            height: 22px;
+            stroke: #fff;
+            fill: none;
+            stroke-width: 2.2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .sidebar-logo .ln {
+            font-size: 1.45rem;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            background: linear-gradient(90deg, #ffffff, #a5c3ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .sidebar-profile {
+            position: relative;
+            font-family: var(--sans);
+        }
+
+        .profile-trigger {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            background: var(--s2);
+            border: 1px solid var(--b2);
+            border-radius: 12px;
+            padding: 12px 14px;
+            color: var(--text);
+            font-family: var(--sans);
+            font-size: 0.82rem;
+            font-weight: 700;
+            cursor: pointer;
+            text-align: left;
+            transition: all 0.15s ease;
+        }
+
+        .profile-trigger:hover {
+            border-color: var(--accent);
+            background: var(--s3);
+        }
+
+        .profile-trigger svg {
+            width: 16px;
+            height: 16px;
+            color: var(--accent);
+            fill: none;
+            stroke-width: 2.2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            flex-shrink: 0;
+        }
+
+        .profile-dropdown {
+            display: none;
+            position: absolute;
+            top: calc(100% + 8px);
+            right: 0;
+            width: 100%;
+            background: var(--s2);
+            border: 1px solid var(--b2);
+            border-radius: 12px;
+            padding: 12px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+            z-index: 100;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .profile-dropdown.show {
+            display: flex;
+        }
+
+        .dropdown-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            font-size: 0.76rem;
+            font-family: var(--mono);
+        }
+
+        .dropdown-info span {
+            color: var(--muted);
+        }
+
+        .dropdown-info strong {
+            color: var(--accent);
+            font-size: 0.88rem;
+            word-break: break-all;
+        }
+
+        .dropdown-btn {
+            width: 100%;
+            justify-content: center;
+        }
+
+        /* Sidebar Menu links */
+        .sidebar-menu {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .menu-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            border-radius: 10px;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            font-family: var(--sans);
+            font-size: 0.92rem;
+            font-weight: 700;
+            color: var(--muted);
+            width: 100%;
+            text-align: left;
+            transition: all 0.15s ease;
+        }
+
+        .menu-item svg {
+            width: 18px;
+            height: 18px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2.2;
+            transition: transform 0.15s ease;
+        }
+
+        .menu-item:hover {
+            color: var(--text);
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .menu-item.active {
+            background: var(--s3);
+            color: var(--text);
+            border: 1px solid var(--b2);
+        }
+
+        .menu-item.active svg {
+            color: var(--accent);
+            transform: scale(1.05);
+        }
+
+        /* Main Content container */
+        .main-content {
+            flex-grow: 1;
+            height: 100%;
+            overflow-y: auto;
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .content-wrap {
+            width: 100%;
+            max-width: 680px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* ════════ PANELS & COMPONENT STYLING ════════ */
+        .panel {
+            display: none
+        }
+
+        .panel.active {
+            display: flex;
+            flex-direction: column;
+            gap: 16px
+        }
+
+        /* card */
+        .card {
+            background: var(--s1);
+            border: 1px solid var(--b1);
+            border-radius: 15px;
+            padding: 22px
+        }
+
+        .card.locked {
+            pointer-events: none;
+        }
+
+        .card.locked .ct {
+            color: var(--muted);
+        }
+
+        .card.locked .cs {
+            color: var(--muted);
+        }
+
+        .card.locked .sd {
+            opacity: 0.6;
+        }
+
+        .ch {
+            display: flex;
+            align-items: center;
+            gap: 11px;
+            margin-bottom: 16px
+        }
+
+        .sd {
+            width: 25px;
+            height: 25px;
+            border-radius: 50%;
+            display: grid;
+            place-items: center;
+            flex-shrink: 0;
+            font-family: var(--mono);
+            font-size: .75rem;
+            font-weight: 500
+        }
+
+        .sd.blue {
+            background: rgba(91, 141, 238, .15);
+            color: var(--accent);
+            border: 1px solid rgba(91, 141, 238, .25)
+        }
+
+        .sd.green {
+            background: rgba(46, 204, 138, .13);
+            color: var(--green);
+            border: 1px solid rgba(46, 204, 138, .22)
+        }
+
+        .sd.done {
+            background: var(--green);
+            color: #051a0d;
+            border: none
+        }
+
+        .ct {
+            font-size: .92rem;
+            font-weight: 700
+        }
+
+        .cs {
+            font-size: .75rem;
+            color: var(--muted);
+            font-family: var(--mono);
+            margin-top: 2px
+        }
+
+        /* drop */
+        .drop {
+            border: 1.5px dashed var(--b2);
+            border-radius: 11px;
+            padding: 30px 16px;
+            text-align: center;
+            cursor: pointer;
+            transition: all .15s;
+            position: relative
+        }
+
+        .drop:hover,
+        .drop.over {
+            border-color: var(--accent);
+            background: rgba(91, 141, 238, .04)
+        }
+
+        .drop input {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+            width: 100%;
+            height: 100%
+        }
+
+        .di svg {
+            width: 30px;
+            height: 30px;
+            stroke: var(--muted);
+            fill: none;
+            stroke-width: 1.5;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            margin-bottom: 8px
+        }
+
+        .dt {
+            font-weight: 700;
+            font-size: .88rem;
+            margin-bottom: 3px
+        }
+
+        .dh {
+            font-size: .75rem;
+            color: var(--muted);
+            font-family: var(--mono)
+        }
+
+        /* chip */
+        .chip {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            background: var(--s2);
+            border: 1px solid var(--b2);
+            border-radius: 8px;
+            padding: 8px 11px;
+            margin-top: 10px
+        }
+
+        .chip svg {
+            width: 16px;
+            height: 16px;
+            stroke: var(--accent);
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            flex-shrink: 0
+        }
+
+        .cn {
+            font-family: var(--mono);
+            font-size: .8rem;
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap
+        }
+
+        .csz {
+            font-size: .7rem;
+            color: var(--muted);
+            font-family: var(--mono);
+            flex-shrink: 0
+        }
+
+        /* CODE BOX / TARGET INPUT */
+        .target-box {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 4px;
+        }
+
+        .cinput {
+            font-family: var(--mono);
+            font-size: 1.3rem;
+            font-weight: 500;
+            text-align: center;
+            background: var(--s2);
+            border: 1.5px solid var(--b2);
+            border-radius: 10px;
+            padding: 12px;
+            color: var(--accent);
+            outline: none;
+            width: 100%;
+            transition: border-color .15s
+        }
+
+        .cinput:focus {
+            border-color: var(--accent)
+        }
+
+        .cinput::placeholder {
+            color: var(--b2);
+        }
+
+        /* Connected Devices & History styles */
+        .device-list,
+        .hist-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 12px;
+        }
+
+        .device-item,
+        .hist-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--s2);
+            border: 1px solid var(--b2);
+            border-radius: 10px;
+            padding: 12px 16px;
+        }
+
+        .device-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .device-name {
+            font-weight: 700;
+            font-size: 0.9rem;
+        }
+
+        .device-meta {
+            font-family: var(--mono);
+            font-size: 0.76rem;
+            color: var(--muted);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--muted);
+        }
+
+        .status-dot.online {
+            background: var(--green);
+            box-shadow: 0 0 8px var(--green);
+        }
+
+        .hist-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 0;
+        }
+
+        .hist-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            display: grid;
+            place-items: center;
+            flex-shrink: 0;
+        }
+
+        .hist-icon.sent {
+            background: rgba(91, 141, 238, 0.12);
+            color: var(--accent);
+        }
+
+        .hist-icon.received {
+            background: rgba(46, 204, 138, 0.12);
+            color: var(--green);
+        }
+
+        .hist-icon svg {
+            width: 16px;
+            height: 16px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2.2;
+        }
+
+        .hist-details {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 0;
+        }
+
+        .hist-filename {
+            font-family: var(--mono);
+            font-size: 0.8rem;
+            font-weight: 500;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .hist-meta {
+            font-family: var(--mono);
+            font-size: 0.72rem;
+            color: var(--muted);
+        }
+
+        .hist-right {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 4px;
+            flex-shrink: 0;
+        }
+
+        .hist-status {
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .hist-status.success {
+            color: var(--green);
+        }
+
+        .hist-status.failed {
+            color: var(--red);
+        }
+
+        .hist-time {
+            font-family: var(--mono);
+            font-size: 0.68rem;
+            color: var(--muted);
+        }
+
+        /* buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            padding: 10px 20px;
+            border-radius: 9px;
+            border: none;
+            cursor: pointer;
+            font-family: var(--sans);
+            font-weight: 700;
+            font-size: .85rem;
+            transition: all .14s
+        }
+
+        .btn svg {
+            width: 14px;
+            height: 14px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2.2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            flex-shrink: 0
+        }
+
+        .bp {
+            background: var(--accent);
+            color: #0c0e14;
+        }
+
+        .bp:hover {
+            background: #4a7de0
+        }
+
+        .bg {
+            background: var(--green);
+            color: #051a0d
+        }
+
+        .bg:hover {
+            opacity: .88
+        }
+
+        .bh {
+            background: var(--s2);
+            color: var(--text);
+            border: 1px solid var(--b2)
+        }
+
+        .bh:hover {
+            border-color: var(--accent);
+            color: var(--accent)
+        }
+
+        .bsm {
+            padding: 7px 13px;
+            font-size: .78rem
+        }
+
+        .btn:disabled {
+            opacity: .3;
+            cursor: not-allowed;
+            pointer-events: none
+        }
+
+        .brow {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center
+        }
+
+        /* status */
+        .st {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 13px;
+            border-radius: 8px;
+            font-family: var(--mono);
+            font-size: .77rem;
+            margin-top: 10px
+        }
+
+        .st.info {
+            background: rgba(91, 141, 238, .1);
+            border: 1px solid rgba(91, 141, 238, .18);
+            color: var(--accent)
+        }
+
+        .st.ok {
+            background: rgba(46, 204, 138, .1);
+            border: 1px solid rgba(46, 204, 138, .18);
+            color: var(--green)
+        }
+
+        .st.warn {
+            background: rgba(240, 165, 0, .1);
+            border: 1px solid rgba(240, 165, 0, .22);
+            color: var(--amber)
+        }
+
+        .st.err {
+            background: rgba(232, 85, 85, .1);
+            border: 1px solid rgba(232, 85, 85, .18);
+            color: var(--red)
+        }
+
+        .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: currentColor;
+            flex-shrink: 0
+        }
+
+        .dot.pulse {
+            animation: pp 1.3s ease-in-out infinite
+        }
+
+        @keyframes pp {
+
+            0%,
+            100% {
+                opacity: 1
+            }
+
+            50% {
+                opacity: .15
+            }
+        }
+
+        /* progress */
+        .prog {
+            margin-top: 14px
+        }
+
+        .pt {
+            display: flex;
+            justify-content: space-between;
+            font-size: .73rem;
+            font-family: var(--mono);
+            color: var(--muted);
+            margin-bottom: 5px
+        }
+
+        .pb {
+            height: 5px;
+            background: var(--b1);
+            border-radius: 3px;
+            overflow: hidden
+        }
+
+        .pf {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent), var(--purple));
+            border-radius: 3px;
+            width: 0%;
+            transition: width .2s
+        }
+
+        /* received */
+        .ri {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            background: var(--s2);
+            border: 1px solid rgba(46, 204, 138, .18);
+            border-radius: 9px;
+            padding: 10px 13px;
+            margin-top: 8px
+        }
+
+        .ri svg {
+            width: 16px;
+            height: 16px;
+            stroke: var(--green);
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            flex-shrink: 0
+        }
+
+        .ri .rn {
+            font-family: var(--mono);
+            font-size: .8rem;
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap
+        }
+
+        .ri .rs {
+            font-size: .7rem;
+            color: var(--muted);
+            font-family: var(--mono);
+            margin-right: 7px
+        }
+
+        .ri a {
+            color: var(--accent);
+            font-family: var(--mono);
+            font-size: .76rem;
+            text-decoration: none;
+            flex-shrink: 0
+        }
+
+        .ri a:hover {
+            text-decoration: underline
+        }
+
+        /* waiting */
+        .wait {
+            text-align: center;
+            padding: 24px 16px;
+            color: var(--muted);
+            font-family: var(--mono);
+            font-size: .78rem
+        }
+
+        .wait svg {
+            width: 36px;
+            height: 36px;
+            stroke: var(--b2);
+            fill: none;
+            stroke-width: 1.5;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            display: block;
+            margin: 0 auto 12px
+        }
+
+        /* RESPONSIVE MEDIA QUERIES */
+        @media (max-width: 768px) {
+            .dashboard {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                height: auto;
+                border-right: none;
+                border-bottom: 1px solid var(--b1);
+                padding: 16px 16px 12px;
+                gap: 12px;
+            }
+
+            .sidebar-top {
+                display: flex;
+                flex-direction: row;
+                align-items: center;
+                justify-content: space-between;
+                width: 100%;
+                gap: 12px;
+            }
+
+            .sidebar-logo {
+                flex-shrink: 0;
+            }
+
+            .sidebar-profile {
+                flex-shrink: 0;
+                margin-left: auto;
+                background: none;
+                border: none;
+                padding: 0;
+            }
+
+            .profile-trigger {
+                width: 40px;
+                height: 40px;
+                padding: 0;
+                justify-content: center;
+                border-radius: 12px;
+            }
+
+            .profile-trigger strong {
+                display: none;
+            }
+
+            .profile-dropdown {
+                width: 200px;
+                top: calc(100% + 8px);
+                right: 0;
+            }
+
+            .sidebar-menu {
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                width: 100%;
+                background: var(--s1);
+                border-top: 1px solid var(--b1);
+                padding: 10px 16px env(safe-area-inset-bottom, 12px);
+                margin: 0;
+                display: flex;
+                flex-direction: row;
+                justify-content: space-around;
+                z-index: 1000;
+                box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.4);
+                -ms-overflow-style: none;
+                scrollbar-width: none;
+            }
+
+            .sidebar-menu::-webkit-scrollbar {
+                display: none;
+            }
+
+            .menu-item {
+                padding: 4px 8px;
+                font-size: 0.72rem;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 4px;
+                background: transparent;
+                border: none;
+                flex: 1;
+                color: var(--muted);
+            }
+
+            .menu-item.active {
+                background: transparent;
+                border: none;
+                color: var(--accent);
+            }
+
+            .menu-item svg {
+                width: 20px;
+                height: 20px;
+            }
+
+            .main-content {
+                padding: 20px 16px 80px;
+            }
+
+            .device-item {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 12px;
+            }
+
+            .device-item .brow {
+                width: 100%;
+                display: flex;
+                gap: 8px;
+            }
+
+            .device-item .brow .btn {
+                flex: 1;
+                justify-content: center;
+            }
+        }
+
+        @media(max-width:420px) {
+            .card {
+                padding: 16px
+            }
+
+            .cinput {
+                font-size: 1.1rem
+            }
+        }
+
+        /* ════════ RADAR DISCOVERY ════════ */
+        .radar-section {
+            margin-top: 18px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            border-top: 1px dashed var(--b2);
+            padding-top: 18px;
+        }
+
+        .radar-hdr {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+        }
+
+        .radar-title {
+            font-size: 0.82rem;
+            font-weight: 700;
+            color: var(--muted);
+            font-family: var(--mono);
+        }
+
+        .radar-container {
+            display: none;
+            position: relative;
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(91, 141, 238, 0.04) 0%, rgba(12, 14, 20, 0.4) 75%, rgba(91, 141, 238, 0.08) 100%);
+            border: 1px solid rgba(91, 141, 238, 0.2);
+            overflow: hidden;
+            box-shadow: inset 0 0 24px rgba(91, 141, 238, 0.1), 0 6px 24px rgba(0, 0, 0, 0.4);
+            margin: 14px auto;
+        }
+
+        .radar-container.active {
+            display: block;
+        }
+
+        .radar-ring {
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            border: 1px dashed rgba(91, 141, 238, 0.15);
+            transform: scale(0.66);
+        }
+
+        .radar-ring:nth-child(2) {
+            transform: scale(0.33);
+        }
+
+        .radar-center {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 38px;
+            height: 38px;
+            background: linear-gradient(135deg, var(--accent), var(--purple));
+            border-radius: 50%;
+            display: grid;
+            place-items: center;
+            z-index: 10;
+            box-shadow: 0 0 15px var(--accent);
+            animation: pulse-glow 2s infinite ease-in-out;
+        }
+
+        .radar-center svg {
+            width: 20px;
+            height: 20px;
+            stroke: #fff;
+            fill: none;
+            stroke-width: 2.2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .radar-sweep {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 50%;
+            height: 50%;
+            background: linear-gradient(45deg, rgba(91, 141, 238, 0.35) 0%, transparent 80%);
+            transform-origin: top left;
+            animation: sweep 3s infinite linear;
+            z-index: 2;
+        }
+
+        .radar-blip {
+            position: absolute;
+            width: 14px;
+            height: 14px;
+            background: var(--green);
+            border-radius: 50%;
+            cursor: pointer;
+            z-index: 5;
+            box-shadow: 0 0 10px var(--green);
+            transform: translate(-50%, -50%);
+            transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+            animation: blip-pulse 1.8s infinite ease-in-out;
+        }
+
+        .radar-blip:hover {
+            transform: translate(-50%, -50%) scale(1.4);
+            box-shadow: 0 0 15px #fff, 0 0 5px var(--green);
+            background: #fff;
+        }
+
+        .radar-blip::after {
+            content: attr(data-label);
+            position: absolute;
+            bottom: 18px;
+            left: 50%;
+            transform: translateX(-50%) scale(0);
+            background: var(--s3);
+            border: 1px solid var(--b2);
+            color: var(--text);
+            font-size: 0.7rem;
+            font-family: var(--mono);
+            padding: 4px 8px;
+            border-radius: 6px;
+            white-space: nowrap;
+            pointer-events: none;
+            transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+            z-index: 100;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+        }
+
+        .radar-blip:hover::after {
+            transform: translateX(-50%) scale(1);
+        }
+
+        .radar-status-text {
+            font-size: 0.74rem;
+            color: var(--muted);
+            font-family: var(--mono);
+            text-align: center;
+        }
+
+        @keyframes sweep {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes pulse-glow {
+            0%, 100% { transform: translate(-50%, -50%) scale(1); }
+            50% { transform: translate(-50%, -50%) scale(1.15); }
+        }
+
+        @keyframes blip-pulse {
+            0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.8; }
+            50% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- ════════ AUTH SECTION (Logged Out) ════════ -->
+    <div id="auth-section" class="auth-wrap">
+        <header class="auth-logo-hdr">
+            <div class="logo">
+                <div class="lb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                        <circle cx="6" cy="12" r="3" />
+                        <circle cx="18" cy="12" r="3" />
+                        <path d="M9 9c2.5-3 5.5-3 8 0" />
+                        <path d="M15 15c-2.5 3-5.5 3-8 0" />
+                        <path d="M16 6h2v2M8 18H6v-2" />
+                    </svg></div>
+                <span class="ln">WayToShare</span>
+            </div>
+            <h1>Drop files <em>instantly</em></h1>
+            <p class="tagline">// secure · target mobile number</p>
+        </header>
+
+        <div class="card auth-card-width">
+            <div class="ch">
+                <div class="sd blue">👤</div>
+                <div>
+                    <div class="ct" id="auth-title">Login to WayToShare</div>
+                    <div class="cs" id="auth-subtitle">Access transfers using your mobile number</div>
+                </div>
+            </div>
+
+            <div class="auth-container">
+                <label for="auth-mobile" class="sr-only">Mobile Number</label>
+                <input class="auth-input" id="auth-mobile" placeholder="Mobile Number (e.g. 1234567890)" aria-label="Your Mobile Number" />
+                <label for="auth-password" class="sr-only">Password</label>
+                <input class="auth-input" type="password" id="auth-password" placeholder="Password" aria-label="Your Password" />
+
+                <div id="auth-error" class="auth-error"></div>
+
+                <div class="brow" style="margin-top: 8px">
+                    <button class="btn bp" id="auth-submit-btn" type="button" onclick="handleAuthSubmit()" aria-label="Submit login or registration">Login</button>
+                    <button class="btn bh" id="auth-toggle-btn" type="button" onclick="toggleAuthMode()" aria-label="Toggle between login and registration mode">Register account</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ════════ APP SECTION (Logged In Dashboard) ════════ -->
+    <div id="app-section" class="dashboard" style="display: none">
+
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-top">
+                <div class="sidebar-logo">
+                    <div class="lb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                            <circle cx="6" cy="12" r="3" />
+                            <circle cx="18" cy="12" r="3" />
+                            <path d="M9 9c2.5-3 5.5-3 8 0" />
+                            <path d="M15 15c-2.5 3-5.5 3-8 0" />
+                            <path d="M16 6h2v2M8 18H6v-2" />
+                        </svg></div>
+                    <span class="ln">WayToShare</span>
+                </div>
+
+                <div class="sidebar-profile" id="user-profile-menu">
+                    <button class="profile-trigger" type="button" onclick="toggleProfileDropdown(event)" aria-label="User Profile Menu">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                            <circle cx="12" cy="7" r="4" />
+                        </svg>
+                        <strong id="logged-in-mobile-trigger"></strong>
+                    </button>
+                    <div class="profile-dropdown" id="profile-dropdown-menu">
+                        <div class="dropdown-info">
+                            <span>Logged in as:</span>
+                            <strong id="logged-in-mobile"></strong>
+                        </div>
+                        <button class="btn bh bsm dropdown-btn" type="button" onclick="handleLogout()" aria-label="Log out of account">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px; margin-right: 6px;" aria-hidden="true" focusable="false">
+                                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                                <polyline points="16 17 21 12 16 7" />
+                                <line x1="21" y1="12" x2="9" y2="12" />
+                            </svg>
+                            Logout
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Navigation menu -->
+                <nav class="sidebar-menu">
+                    <button class="menu-item active" id="tab-send" type="button" onclick="switchTab('send')" aria-label="Send Files Panel">
+                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <line x1="22" y1="2" x2="11" y2="13" />
+                            <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                        </svg>
+                        <span>Send</span>
+                    </button>
+                    <button class="menu-item" id="tab-recv" type="button" onclick="switchTab('recv')" aria-label="Receive Files Panel">
+                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                            <polyline points="7 10 12 15 17 10" />
+                            <line x1="12" y1="15" x2="12" y2="3" />
+                        </svg>
+                        <span>Receive</span>
+                    </button>
+                    <button class="menu-item" id="tab-devices" type="button" onclick="switchTab('devices')" aria-label="Connected Devices Panel">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                            <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
+                            <line x1="12" y1="18" x2="12.01" y2="18" />
+                        </svg>
+                        <span>Devices</span>
+                    </button>
+                    <button class="menu-item" id="tab-history" type="button" onclick="switchTab('history')" aria-label="Transfer History Panel">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                            <circle cx="12" cy="12" r="10" />
+                            <polyline points="12 6 12 12 16 14" />
+                        </svg>
+                        <span>History</span>
+                    </button>
+                </nav>
+            </div>
+        </aside>
+
+        <!-- Main Dashboard View Panel -->
+        <main class="main-content">
+            <div class="content-wrap">
+
+                <!-- ════════ PANEL: SEND ════════ -->
+                <div class="panel active" id="panel-send">
+
+                    <!-- Step 1: Target Recipient -->
+                    <div class="card" id="sc1">
+                        <div class="ch">
+                            <div class="sd blue">1</div>
+                            <div>
+                                <div class="ct">Target Mobile Number</div>
+                                <div class="cs">enter recipient mobile number or scan globally</div>
+                            </div>
+                        </div>
+                        <div class="target-box">
+                            <label for="target-mobile" class="sr-only">Recipient Mobile Number</label>
+                            <input class="cinput" id="target-mobile" placeholder="Recipient Mobile Number"
+                                oninput="this.value=this.value.replace(/[^0-9]/g,'')" aria-label="Recipient Mobile Number" />
+                        </div>
+                        
+                        <!-- Radar Discovery Panel -->
+                        <div class="radar-section">
+                            <div class="radar-hdr">
+                                <span class="radar-title">GLOBAL DISCOVERY RADAR</span>
+                                <button class="btn bh bsm radar-toggle-btn" id="radar-toggle-btn" type="button" onclick="toggleRadar()" aria-label="Toggle user scanner radar">Start Scanner</button>
+                            </div>
+                            
+                            <div class="radar-container" id="radar-box">
+                                <div class="radar-sweep"></div>
+                                <div class="radar-ring"></div>
+                                <div class="radar-ring"></div>
+                                <div class="radar-center">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false">
+                                        <circle cx="12" cy="12" r="10"/>
+                                        <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/>
+                                        <path d="M2 12h20"/>
+                                    </svg>
+                                </div>
+                            </div>
+                            
+                            <div class="radar-status-text" id="radar-status">Scanner offline.</div>
+                        </div>
+                    </div>
+
+                    <!-- Step 2: Pick File -->
+                    <div class="card" id="sc2">
+                        <div class="ch">
+                            <div class="sd blue">2</div>
+                            <div>
+                                <div class="ct">Select File</div>
+                                <div class="cs">transfer starts automatically on drop</div>
+                            </div>
+                        </div>
+                        <div class="drop" id="sdrop">
+                            <label for="sfile" class="sr-only">Upload File</label>
+                            <input type="file" id="sfile" onchange="onFile(this.files[0])" aria-label="Upload File" />
+                            <div class="di"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                    <polyline points="17 8 12 3 7 8" />
+                                    <line x1="12" y1="3" x2="12" y2="15" />
+                                </svg></div>
+                            <div class="dt">Drop file here</div>
+                            <div class="dh">or click to browse · direct transfer</div>
+                        </div>
+                        <div id="schip" style="display:none" class="chip">
+                            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+                                <polyline points="13 2 13 9 20 9" />
+                            </svg>
+                            <span class="cn" id="schipn"></span><span class="csz" id="schips"></span>
+                        </div>
+                        <div id="speer"></div>
+                    </div>
+
+                    <!-- Step 3: Transfer progress -->
+                    <div class="card locked" id="sc3">
+                        <div class="ch">
+                            <div class="sd green" id="sd3">3</div>
+                            <div>
+                                <div class="ct">Transfer Progress</div>
+                                <div class="cs">sending encrypted data chunks</div>
+                            </div>
+                        </div>
+                        <div id="sprog" style="display:none" class="prog">
+                            <div class="pt"><span id="sprogn"></span><span id="sprogp">0%</span></div>
+                            <div class="pb">
+                                <div class="pf" id="sprogf"></div>
+                            </div>
+                        </div>
+                        <div id="sdone"></div>
+                    </div>
+
+                </div>
+
+                <!-- ════════ PANEL: RECEIVE ════════ -->
+                <div class="panel" id="panel-recv">
+
+                    <!-- Status details -->
+                    <div class="card" id="rc1">
+                        <div class="ch">
+                            <div class="sd blue" id="rd1">✓</div>
+                            <div>
+                                <div class="ct">Ready to Receive</div>
+                                <div class="cs">keep this tab open to receive files automatically</div>
+                            </div>
+                        </div>
+                        <div class="wait" id="rwait">
+                            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                <circle cx="12" cy="12" r="10" />
+                                <polyline points="12 6 12 12 16 14" />
+                            </svg>
+                            Waiting for incoming targeted transfers…
+                        </div>
+                        <div id="rstat"></div>
+                    </div>
+
+                    <!-- Receive progress & files -->
+                    <div class="card locked" id="rc2">
+                        <div class="ch">
+                            <div class="sd green" id="rd2">2</div>
+                            <div>
+                                <div class="ct">Incoming Files</div>
+                                <div class="cs">received via secure data channels</div>
+                            </div>
+                        </div>
+                        <div id="rprog" style="display:none" class="prog">
+                            <div class="pt"><span id="rprogn"></span><span id="rprogp">0%</span></div>
+                            <div class="pb">
+                                <div class="pf" id="rprogf"></div>
+                            </div>
+                        </div>
+                        <div id="rfiles" style="margin-top: 10px"></div>
+                    </div>
+
+                </div>
+
+                <!-- ════════ PANEL: DEVICES ════════ -->
+                <div class="panel" id="panel-devices">
+                    <!-- Add Device Card -->
+                    <div class="card">
+                        <div class="ch">
+                            <div class="sd blue">+</div>
+                            <div>
+                                <div class="ct">Connect New Device</div>
+                                <div class="cs">add a registered user as a permanent device</div>
+                            </div>
+                        </div>
+                        <div class="auth-container">
+                            <label for="dev-mobile" class="sr-only">Device Mobile Number</label>
+                            <input class="auth-input" id="dev-mobile" placeholder="Device Mobile Number" aria-label="Device Mobile Number" />
+                            <label for="dev-alias" class="sr-only">Device Alias Name</label>
+                            <input class="auth-input" id="dev-alias"
+                                placeholder="Alias Name (e.g. My Laptop, Dad's Phone)" aria-label="Device Alias Name" />
+                            <div id="dev-error" class="auth-error"></div>
+                            <div class="brow" style="margin-top: 8px">
+                                <button class="btn bp" type="button" onclick="handleAddDevice()" aria-label="Connect Device">Connect Device</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Devices List Card -->
+                    <div class="card">
+                        <div class="ch">
+                            <div class="sd green">✓</div>
+                            <div>
+                                <div class="ct">Connected Devices</div>
+                                <div class="cs">saved devices and their live online statuses</div>
+                            </div>
+                        </div>
+                        <div id="devices-container" class="device-list">
+                            <!-- Rendered dynamically -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ════════ PANEL: HISTORY ════════ -->
+                <div class="panel" id="panel-history">
+                    <div class="card">
+                        <div class="ch">
+                            <div class="sd blue">🕒</div>
+                            <div>
+                                <div class="ct">Transfer History</div>
+                                <div class="cs">recent P2P file drop transfers</div>
+                            </div>
+                        </div>
+                        <div id="history-container" class="hist-list">
+                            <!-- Rendered dynamically -->
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // ══════════════════════════════════════════════════════
+        //  ⚙  Signaling server URL auto-detected
+        // ══════════════════════════════════════════════════════
+        const SIG_URL = window.location.host
+            ? (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host
+            : 'ws://localhost:3001';
+        // ══════════════════════════════════════════════════════
+
+        const ICE = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+            ]
+        };
+        const CHUNK = 16384;
+
+        let wsConn = null, sPc = null, rPc = null, sCh = null, selFile = null;
+        let sIceQueue = [], rIceQueue = [];
+        let activeRoom = null;
+        let authMode = 'login'; // 'login' or 'register'
+        let currentUserMobile = localStorage.getItem('userMobile') || null;
+        let activeSenderMobile = null;
+
+        // ── API request helper ───────────────────────────────
+        async function apiRequest(endpoint, method = 'GET', body = null) {
+            const headers = {
+                'x-user-mobile': currentUserMobile
+            };
+            if (body) {
+                headers['Content-Type'] = 'application/json';
+            }
+            const options = {
+                method,
+                headers
+            };
+            if (body) {
+                options.body = JSON.stringify(body);
+            }
+            const res = await fetch(endpoint, options);
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data.error || 'Request failed');
+            }
+            return data;
+        }
+
+        // ── Auth Page handlers ───────────────────────────────
+        function toggleAuthMode() {
+            const title = $('auth-title');
+            const subtitle = $('auth-subtitle');
+            const submitBtn = $('auth-submit-btn');
+            const toggleBtn = $('auth-toggle-btn');
+            const errorDiv = $('auth-error');
+
+            errorDiv.style.display = 'none';
+
+            if (authMode === 'login') {
+                authMode = 'register';
+                title.innerText = 'Register account';
+                subtitle.innerText = 'Enter a mobile number and password to create a free account';
+                submitBtn.innerText = 'Register';
+                toggleBtn.innerText = 'Back to login';
+            } else {
+                authMode = 'login';
+                title.innerText = 'Login to FileDrop';
+                subtitle.innerText = 'Access P2P transfers using your mobile number';
+                submitBtn.innerText = 'Login';
+                toggleBtn.innerText = 'Register account';
+            }
+        }
+
+        async function handleAuthSubmit() {
+            const mobile = $('auth-mobile').value.trim();
+            const password = $('auth-password').value;
+            const errorDiv = $('auth-error');
+
+            if (!mobile || !password) {
+                errorDiv.innerText = 'Mobile number and password are required.';
+                errorDiv.style.display = 'block';
+                return;
+            }
+
+            errorDiv.style.display = 'none';
+
+            const endpoint = authMode === 'login' ? '/api/login' : '/api/register';
+
+            try {
+                const res = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mobile, password })
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    errorDiv.innerText = data.error || 'Authentication failed';
+                    errorDiv.style.display = 'block';
+                    return;
+                }
+
+                if (authMode === 'register') {
+                    authMode = 'login';
+                    toggleAuthMode();
+                    errorDiv.innerText = 'Registration successful! Please login.';
+                    errorDiv.style.color = 'var(--green)';
+                    errorDiv.style.background = 'rgba(46, 204, 138, 0.08)';
+                    errorDiv.style.border = '1px solid rgba(46, 204, 138, 0.2)';
+                    errorDiv.style.display = 'block';
+                } else {
+                    currentUserMobile = data.mobile;
+                    localStorage.setItem('userMobile', data.mobile);
+                    initApp();
+                }
+            } catch (err) {
+                errorDiv.innerText = 'Server error. Please check database connection.';
+                errorDiv.style.display = 'block';
+            }
+        }
+
+        function handleLogout() {
+            currentUserMobile = null;
+            localStorage.removeItem('userMobile');
+            if (wsConn) {
+                wsConn.close();
+                wsConn = null;
+            }
+
+            const dropdown = document.getElementById('profile-dropdown-menu');
+            if (dropdown) {
+                dropdown.classList.remove('show');
+            }
+
+            $('auth-section').style.display = 'flex';
+            $('app-section').style.display = 'none';
+        }
+
+        // ── Main App Initialization ────────────────────────
+        function initApp() {
+            if (!currentUserMobile) return;
+
+            $('auth-section').style.display = 'none';
+            $('app-section').style.display = 'flex';
+            $('logged-in-mobile').innerText = currentUserMobile;
+
+            const triggerText = $('logged-in-mobile-trigger');
+            if (triggerText) {
+                triggerText.innerText = currentUserMobile;
+            }
+
+            connectWebSocket();
+        }
+
+        function toggleProfileDropdown(event) {
+            event.stopPropagation();
+            const dropdown = document.getElementById('profile-dropdown-menu');
+            if (dropdown) {
+                dropdown.classList.toggle('show');
+            }
+        }
+
+        window.addEventListener('click', function(e) {
+            const dropdown = document.getElementById('profile-dropdown-menu');
+            const trigger = document.querySelector('.profile-trigger');
+            if (dropdown && dropdown.classList.contains('show')) {
+                if (trigger && !dropdown.contains(e.target) && !trigger.contains(e.target)) {
+                    dropdown.classList.remove('show');
+                }
+            }
+        });
+
+        function connectWebSocket() {
+            if (wsConn && wsConn.readyState === 1) return;
+
+            wsConn = new WebSocket(SIG_URL);
+
+            wsConn.onopen = () => {
+                wsConn.send(JSON.stringify({ type: 'auth', mobile: currentUserMobile }));
+                status('rstat', 'info', 'Connected to signaling server');
+            };
+
+            wsConn.onerror = () => {
+                status('rstat', 'err', 'Signaling server offline. Retrying...');
+                setTimeout(connectWebSocket, 5000);
+            };
+
+            wsConn.onclose = () => {
+                status('rstat', 'warn', 'Disconnected from signaling. Reconnecting...');
+                setTimeout(connectWebSocket, 5000);
+            };
+
+            wsConn.onmessage = async e => {
+                const msg = JSON.parse(e.data);
+
+                // --- SENDER FLOW EVENTS ---
+                if (msg.type === 'transfer-initiated') {
+                    activeRoom = msg.room;
+                    status('speer', 'info', 'Connecting WebRTC P2P channel...', true);
+
+                    sIceQueue = [];
+                    sPc = new RTCPeerConnection(ICE);
+                    sCh = sPc.createDataChannel('fd');
+
+                    sCh.onopen = () => {
+                        status('speer', 'info', 'Connected! Waiting for recipient to accept...', true);
+                        unlock('sc3');
+                        sCh.send(JSON.stringify({ t: 'meta', name: selFile.name, size: selFile.size, mime: selFile.type }));
+                    };
+
+                    sCh.onmessage = async ev => {
+                        try {
+                            const data = JSON.parse(ev.data);
+                            if (data.t === 'ready') {
+                                status('speer', 'ok', 'Recipient accepted! Transferring file...');
+                                sendFile();
+                            }
+                        } catch(e) {
+                            console.error("Sender got non-JSON channel message:", ev.data);
+                        }
+                    };
+
+                    sPc.onicecandidate = ev => {
+                        if (ev.candidate) {
+                            wsConn.send(JSON.stringify({ type: 'ice', room: activeRoom, candidate: ev.candidate }));
+                        }
+                    };
+
+                    const offer = await sPc.createOffer();
+                    await sPc.setLocalDescription(offer);
+                    wsConn.send(JSON.stringify({ type: 'offer', room: activeRoom, sdp: btoa(JSON.stringify(sPc.localDescription)) }));
+                }
+
+                if (msg.type === 'answer') {
+                    await sPc.setRemoteDescription(new RTCSessionDescription(JSON.parse(atob(msg.sdp))));
+
+                    while (sIceQueue.length > 0) {
+                        const candidate = sIceQueue.shift();
+                        sPc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => { });
+                    }
+                }
+
+                // --- RECEIVER FLOW EVENTS ---
+                if (msg.type === 'incoming-transfer') {
+                    activeRoom = msg.room;
+                    activeSenderMobile = msg.sender;
+                    status('rstat', 'info', `Incoming transfer from ${msg.sender}. Connecting P2P...`, true);
+                    unlock('rc2');
+                }
+
+                if (msg.type === 'offer') {
+                    activeRoom = msg.room;
+                    rIceQueue = [];
+                    rPc = new RTCPeerConnection(ICE);
+
+                    rPc.onicecandidate = ev => {
+                        if (ev.candidate) {
+                            wsConn.send(JSON.stringify({ type: 'ice', room: activeRoom, candidate: ev.candidate }));
+                        }
+                    };
+                    rPc.ondatachannel = ev => setupRecv(ev.channel);
+
+                    await rPc.setRemoteDescription(new RTCSessionDescription(JSON.parse(atob(msg.sdp))));
+                    const ans = await rPc.createAnswer();
+                    await rPc.setLocalDescription(ans);
+                    wsConn.send(JSON.stringify({ type: 'answer', room: activeRoom, sdp: btoa(JSON.stringify(rPc.localDescription)) }));
+
+                    while (rIceQueue.length > 0) {
+                        const candidate = rIceQueue.shift();
+                        rPc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => { });
+                    }
+
+                    status('rstat', 'ok', `P2P Connected! Receiving file...`);
+                }
+
+                // --- GENERAL EVENTS ---
+                if (msg.type === 'ice') {
+                    const activePc = sPc || rPc;
+                    const activeQueue = sPc ? sIceQueue : rIceQueue;
+
+                    if (activePc && activePc.remoteDescription) {
+                        activePc.addIceCandidate(new RTCIceCandidate(msg.candidate)).catch(() => { });
+                    } else {
+                        activeQueue.push(msg.candidate);
+                    }
+                }
+
+                if (msg.type === 'error') {
+                    status('speer', 'err', msg.message || 'Error occurred');
+                }
+
+                if (msg.type === 'peer-disconnected') {
+                    if (sPc) {
+                        status('speer', 'warn', 'Recipient disconnected.');
+                        sPc.close();
+                        sPc = null;
+                    }
+                    if (rPc) {
+                        status('rstat', 'warn', 'Sender disconnected.');
+                        rPc.close();
+                        rPc = null;
+                        $('rwait').style.display = 'block';
+                    }
+                }
+            };
+        }
+
+        // ── Tab Switching ──────────────────────────────────────
+        function switchTab(t) {
+            ['send', 'recv', 'devices', 'history'].forEach(x => {
+                const tabEl = document.getElementById('tab-' + x);
+                const panelEl = document.getElementById('panel-' + x);
+                if (tabEl) tabEl.classList.toggle('active', x === t);
+                if (panelEl) panelEl.classList.toggle('active', x === t);
+            });
+
+            if (t === 'devices') {
+                loadDevices();
+            } else if (t === 'history') {
+                loadHistory();
+            }
+        }
+
+        // ── Connected Devices operations ─────────────────────
+        async function loadDevices() {
+            const container = $('devices-container');
+            container.innerHTML = '<div class="wait">Loading connected devices...</div>';
+            try {
+                const list = await apiRequest('/api/contacts');
+                if (list.length === 0) {
+                    container.innerHTML = '<div class="wait">No connected devices yet. Add a device above to save it permanently.</div>';
+                    return;
+                }
+                container.innerHTML = '';
+                list.forEach(dev => {
+                    const el = document.createElement('div');
+                    el.className = 'device-item';
+                    el.innerHTML = `
+                        <div class="device-info">
+                            <div class="device-name">${dev.alias || 'Unnamed Device'}</div>
+                            <div class="device-meta">
+                                <span class="status-dot ${dev.isOnline ? 'online' : ''}"></span>
+                                <span>${dev.mobile}</span>
+                                <span style="color:var(--muted)">·</span>
+                                <span>${dev.isOnline ? 'online' : 'offline'}</span>
+                            </div>
+                        </div>
+                        <div class="brow">
+                            <button class="btn bp bsm" type="button" onclick="sendToDevice('${dev.mobile}')" ${dev.isOnline ? '' : 'disabled'} aria-label="Send File to ${dev.alias || dev.mobile}">Send File</button>
+                            <button class="btn bh bsm" type="button" onclick="deleteDevice('${dev.mobile}')" style="border-color:var(--red); color:var(--red)" aria-label="Delete connected device ${dev.alias || dev.mobile}">Delete</button>
+                        </div>
+                    `;
+                    container.appendChild(el);
+                });
+            } catch (err) {
+                container.innerHTML = `<div class="st err"><div class="dot"></div><span>${err.message}</span></div>`;
+            }
+        }
+
+        async function handleAddDevice() {
+            const mobileInput = $('dev-mobile');
+            const aliasInput = $('dev-alias');
+            const errorDiv = $('dev-error');
+
+            const mobile = mobileInput.value.trim();
+            const alias = aliasInput.value.trim();
+
+            if (!mobile) {
+                errorDiv.innerText = 'Mobile number is required.';
+                errorDiv.style.display = 'block';
+                return;
+            }
+            errorDiv.style.display = 'none';
+
+            try {
+                await apiRequest('/api/contacts', 'POST', { contactMobile: mobile, alias });
+                mobileInput.value = '';
+                aliasInput.value = '';
+                loadDevices();
+            } catch (err) {
+                errorDiv.innerText = err.message;
+                errorDiv.style.display = 'block';
+            }
+        }
+
+        async function deleteDevice(mobile) {
+            if (!confirm(`Are you sure you want to delete device ${mobile}?`)) return;
+            try {
+                await apiRequest(`/api/contacts/${mobile}`, 'DELETE');
+                loadDevices();
+            } catch (err) {
+                alert('Failed to delete device: ' + err.message);
+            }
+        }
+
+        function sendToDevice(mobile) {
+            $('target-mobile').value = mobile;
+            switchTab('send');
+        }
+
+        // ── Transfer History operations ──────────────────────
+        async function loadHistory() {
+            const container = $('history-container');
+            container.innerHTML = '<div class="wait">Loading history...</div>';
+            try {
+                const list = await apiRequest('/api/history');
+                if (list.length === 0) {
+                    container.innerHTML = '<div class="wait">No transfer history yet.</div>';
+                    return;
+                }
+                container.innerHTML = '';
+                list.forEach(item => {
+                    const date = new Date(item.createdAt);
+                    const dateStr = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                    const el = document.createElement('div');
+                    el.className = 'hist-item';
+                    el.innerHTML = `
+                        <div class="hist-left">
+                            <div class="hist-icon ${item.direction}">
+                                ${item.direction === 'sent' ? `
+                                    <svg viewBox="0 0 24 24">
+                                        <line x1="12" y1="19" x2="12" y2="5"></line>
+                                        <polyline points="5 12 12 5 19 12"></polyline>
+                                    </svg>
+                                ` : `
+                                    <svg viewBox="0 0 24 24">
+                                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                                        <polyline points="19 12 12 19 5 12"></polyline>
+                                    </svg>
+                                `}
+                            </div>
+                            <div class="hist-details">
+                                <div class="hist-filename">${item.fileName}</div>
+                                <div class="hist-meta">
+                                    <span>${fmt(item.fileSize)}</span>
+                                    <span>·</span>
+                                    <span>${item.direction === 'sent' ? 'To' : 'From'}: ${item.peerMobile}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="hist-right">
+                            <span class="hist-status ${item.status}">${item.status}</span>
+                            <span class="hist-time">${dateStr}</span>
+                        </div>
+                    `;
+                    container.appendChild(el);
+                });
+            } catch (err) {
+                container.innerHTML = `<div class="st err"><div class="dot"></div><span>${err.message}</span></div>`;
+            }
+        }
+
+        // ── helpers ──────────────────────────────────────────
+        const $ = id => document.getElementById(id);
+        const fmt = b => b < 1024 ? b + ' B' : b < 1 << 20 ? (b / 1024).toFixed(1) + ' KB' : (b / (1 << 20)).toFixed(1) + ' MB';
+
+        function status(id, type, msg, pulse = false) {
+            $(id).innerHTML = `<div class="st ${type}"><div class="dot${pulse ? ' pulse' : ''}"></div><span>${msg}</span></div>`;
+        }
+        function unlock(id) { $(id).classList.remove('locked') }
+        function done(id) {
+            const d = $(id); d.className = 'sd done';
+            d.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+        }
+
+        // ── drag-drop ────────────────────────────────────────
+        const sdrop = $('sdrop');
+        sdrop.addEventListener('dragover', e => { e.preventDefault(); sdrop.classList.add('over') });
+        sdrop.addEventListener('dragleave', () => sdrop.classList.remove('over'));
+        sdrop.addEventListener('drop', e => { e.preventDefault(); sdrop.classList.remove('over'); if (e.dataTransfer.files[0]) onFile(e.dataTransfer.files[0]) });
+
+        // ── pick file + Send trigger ────────────────────────
+        function onFile(f) {
+            const targetMobile = $('target-mobile').value.trim();
+            if (!targetMobile) {
+                alert('Please enter a target mobile number first.');
+                $('target-mobile').focus();
+                return;
+            }
+
+            selFile = f;
+            $('schipn').textContent = f.name;
+            $('schips').textContent = fmt(f.size);
+            $('schip').style.display = 'flex';
+
+            status('speer', 'info', `Initiating transfer to ${targetMobile}...`, true);
+            wsConn.send(JSON.stringify({
+                type: 'initiate-transfer',
+                sender: currentUserMobile,
+                target: targetMobile
+            }));
+        }
+
+        // ── SENDER: send file ────────────────────────────────
+        // ── SENDER: send file ────────────────────────────────
+        async function sendFile() {
+            if (!selFile || !sCh || sCh.readyState !== 'open') return;
+            $('sprog').style.display = 'block';
+            $('sprogn').textContent = selFile.name;
+
+            const total = selFile.size;
+            let offset = 0;
+            const chunkSize = 65536; // 64KB chunks
+
+            async function pump() {
+                while (offset < total) {
+                    if (sCh.bufferedAmount > 1048576) { // 1MB buffer limit
+                        setTimeout(pump, 20);
+                        return;
+                    }
+                    const end = Math.min(offset + chunkSize, total);
+                    const slice = selFile.slice(offset, end);
+                    const chunk = await slice.arrayBuffer();
+                    sCh.send(chunk);
+                    offset = end;
+                    
+                    const pct = Math.round(offset / total * 100);
+                    $('sprogf').style.width = pct + '%';
+                    $('sprogp').textContent = pct + '%';
+                }
+                
+                status('sdone', 'ok', 'Transfer complete!');
+                done('sd3');
+
+                apiRequest('/api/history', 'POST', {
+                    fileName: selFile.name,
+                    fileSize: selFile.size,
+                    direction: 'sent',
+                    peerMobile: $('target-mobile').value.trim(),
+                    status: 'success'
+                }).catch(e => console.error('Failed to log transfer history:', e));
+            }
+
+            pump();
+        }
+
+        function setupRecv(ch) {
+            let fileWritable = null;
+            let useMemoryBuffer = false;
+            let meta = null, chunks = [], rcvd = 0;
+            ch.binaryType = 'arraybuffer';
+
+            ch.onopen = () => {
+                $('rwait').style.display = 'none';
+            };
+
+            async function showIncomingAcceptPrompt(meta, ch) {
+                $('rwait').style.display = 'none';
+                
+                const el = document.createElement('div');
+                el.id = 'accept-prompt-card';
+                el.className = 'card';
+                el.style.border = '1px solid var(--accent)';
+                el.style.boxShadow = '0 4px 16px rgba(91, 141, 238, 0.15)';
+                
+                const hasFileSystemAccess = typeof window.showSaveFilePicker === 'function';
+                
+                el.innerHTML = `
+                    <div class="ch">
+                        <div class="sd blue">📩</div>
+                        <div>
+                            <div class="ct">Incoming File Offer</div>
+                            <div class="cs">from target mobile device</div>
+                        </div>
+                    </div>
+                    <div style="background: var(--s2); border: 1px solid var(--b2); border-radius:10px; padding:12px; margin-bottom:12px;">
+                        <div style="font-family:var(--mono); font-size:0.8rem; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${meta.name}</div>
+                        <div style="font-family:var(--mono); font-size:0.72rem; color:var(--muted); margin-top:2px;">Size: ${fmt(meta.size)}</div>
+                    </div>
+                    ${!hasFileSystemAccess && meta.size > 1.5 * 1024 * 1024 * 1024 ? `
+                        <div class="st err" style="margin-bottom:12px; font-size:0.74rem;">
+                            <div class="dot"></div>
+                            <span>Warning: This file is very large (${fmt(meta.size)}). Your browser doesn't support streaming to disk, so receiving it might crash your tab. Please use Chrome or Edge for large files.</span>
+                        </div>
+                    ` : ''}
+                    <div class="brow">
+                        <button class="btn bp bsm" id="accept-save-btn" type="button" aria-label="Accept incoming file offer and save to disk">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;">
+                                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                                <polyline points="17 21 17 13 7 13 7 21"/>
+                                <polyline points="7 3 7 8 15 8"/>
+                            </svg>
+                            Accept & Save to Disk
+                        </button>
+                        <button class="btn bh bsm" id="reject-btn" type="button" style="border-color:var(--red); color:var(--red);" aria-label="Decline incoming file offer">Decline</button>
+                    </div>
+                `;
+                
+                $('rfiles').appendChild(el);
+                
+                $('accept-save-btn').onclick = async () => {
+                    $('accept-save-btn').disabled = true;
+                    $('reject-btn').disabled = true;
+                    
+                    if (hasFileSystemAccess) {
+                        try {
+                            const handle = await window.showSaveFilePicker({
+                                suggestedName: meta.name
+                            });
+                            fileWritable = await handle.createWritable();
+                            
+                            el.remove();
+                            
+                            $('rprog').style.display = 'block';
+                            $('rprogn').textContent = meta.name;
+                            $('rprogf').style.width = '0%';
+                            $('rprogp').textContent = '0%';
+                            
+                            ch.send(JSON.stringify({ t: 'ready' }));
+                        } catch (err) {
+                            $('accept-save-btn').disabled = false;
+                            $('reject-btn').disabled = false;
+                            console.error("Save file picker error:", err);
+                        }
+                    } else {
+                        useMemoryBuffer = true;
+                        el.remove();
+                        
+                        $('rprog').style.display = 'block';
+                        $('rprogn').textContent = meta.name;
+                        $('rprogf').style.width = '0%';
+                        $('rprogp').textContent = '0%';
+                        
+                        ch.send(JSON.stringify({ t: 'ready' }));
+                    }
+                };
+                
+                $('reject-btn').onclick = () => {
+                    el.remove();
+                    $('rwait').style.display = 'block';
+                    ch.close();
+                };
+            }
+
+            ch.onmessage = async ev => {
+                if (typeof ev.data === 'string') {
+                    try {
+                        const m = JSON.parse(ev.data);
+                        if (m.t === 'meta') {
+                            meta = m;
+                            chunks = [];
+                            rcvd = 0;
+                            fileWritable = null;
+                            useMemoryBuffer = false;
+                            showIncomingAcceptPrompt(meta, ch);
+                        }
+                    } catch(e) {
+                        console.error("Receiver JSON error:", e);
+                    }
+                    return;
+                }
+
+                if (!meta) return;
+                
+                rcvd += ev.data.byteLength;
+                const pct = Math.min(100, Math.round(rcvd / meta.size * 100));
+                $('rprogf').style.width = pct + '%';
+                $('rprogp').textContent = pct + '%';
+
+                if (fileWritable) {
+                    await fileWritable.write(ev.data);
+                } else if (useMemoryBuffer) {
+                    chunks.push(ev.data);
+                }
+
+                if (rcvd >= meta.size) {
+                    $('rprog').style.display = 'none';
+                    status('rstat', 'ok', 'Transfer complete!');
+                    
+                    if (fileWritable) {
+                        await fileWritable.close();
+                        fileWritable = null;
+                        
+                        const el = document.createElement('div');
+                        el.className = 'ri';
+                        el.innerHTML = `
+                            <svg viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;flex-shrink:0;">
+                                <circle cx="12" cy="12" r="10" />
+                                <polyline points="12 8 12 12 16 14" />
+                            </svg>
+                            <span class="rn">${meta.name}</span>
+                            <span class="rs">${fmt(meta.size)}</span>
+                            <span style="color:var(--green); font-size:0.76rem; font-family:var(--mono); font-weight: 600;">Saved directly to disk</span>
+                        `;
+                        $('rfiles').appendChild(el);
+                    } else if (useMemoryBuffer) {
+                        const url = URL.createObjectURL(new Blob(chunks, { type: meta.mime || 'application/octet-stream' }));
+                        const el = document.createElement('div');
+                        el.className = 'ri';
+                        el.innerHTML = `<svg viewBox="0 0 24 24"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg><span class="rn">${meta.name}</span><span class="rs">${fmt(meta.size)}</span><a href="${url}" download="${meta.name}">↓ Download</a>`;
+                        $('rfiles').appendChild(el);
+                    }
+
+                    apiRequest('/api/history', 'POST', {
+                        fileName: meta.name,
+                        fileSize: meta.size,
+                        direction: 'received',
+                        peerMobile: activeSenderMobile || 'Unknown',
+                        status: 'success'
+                    }).catch(e => console.error('Failed to log transfer history:', e));
+                }
+            };
+        }
+
+        // ── global discovery radar ───────────────────────────
+        let radarInterval = null;
+        const radarBlipPositions = {};
+
+        function toggleRadar() {
+            const container = $('radar-box');
+            const btn = $('radar-toggle-btn');
+            
+            if (container.classList.contains('active')) {
+                container.classList.remove('active');
+                btn.innerText = 'Start Scanner';
+                clearInterval(radarInterval);
+                radarInterval = null;
+                $('radar-status').textContent = 'Scanner offline.';
+                // Remove all blips
+                document.querySelectorAll('.radar-blip').forEach(el => el.remove());
+                for (const m in radarBlipPositions) delete radarBlipPositions[m];
+            } else {
+                container.classList.add('active');
+                btn.innerText = 'Stop Scanner';
+                startRadarScan();
+            }
+        }
+
+        function startRadarScan() {
+            scanOnlineUsers();
+            radarInterval = setInterval(scanOnlineUsers, 4000);
+        }
+
+        async function scanOnlineUsers() {
+            $('radar-status').textContent = 'Scanning global nodes...';
+            try {
+                const list = await apiRequest('/api/online-users');
+                
+                const currentMobiles = list.map(u => u.mobile);
+                document.querySelectorAll('.radar-blip').forEach(el => {
+                    const mobile = el.getAttribute('data-mobile');
+                    if (!currentMobiles.includes(mobile)) {
+                        el.remove();
+                        delete radarBlipPositions[mobile];
+                    }
+                });
+
+                if (list.length === 0) {
+                    $('radar-status').textContent = '0 online users found.';
+                    return;
+                }
+
+                $('radar-status').textContent = `${list.length} online user(s) found.`;
+
+                const radar = $('radar-box');
+                list.forEach(user => {
+                    let pos = radarBlipPositions[user.mobile];
+                    if (!pos) {
+                        const angle = Math.random() * Math.PI * 2;
+                        const radius = 35 + Math.random() * 50;
+                        pos = {
+                            x: Math.round(100 + radius * Math.cos(angle)),
+                            y: Math.round(100 + radius * Math.sin(angle))
+                        };
+                        radarBlipPositions[user.mobile] = pos;
+                    }
+
+                    let blip = document.querySelector(`.radar-blip[data-mobile="${user.mobile}"]`);
+                    if (!blip) {
+                        blip = document.createElement('div');
+                        blip.className = 'radar-blip';
+                        blip.setAttribute('data-mobile', user.mobile);
+                        blip.setAttribute('data-label', user.mobile);
+                        blip.style.left = pos.x + 'px';
+                        blip.style.top = pos.y + 'px';
+                        
+                        blip.onclick = () => {
+                            $('target-mobile').value = user.mobile;
+                            const targetInput = $('target-mobile');
+                            targetInput.style.borderColor = 'var(--green)';
+                            setTimeout(() => { targetInput.style.borderColor = ''; }, 1000);
+                        };
+
+                        radar.appendChild(blip);
+                    }
+                });
+
+            } catch (err) {
+                $('radar-status').textContent = 'Scan failed: ' + err.message;
+            }
+        }
+
+        // On Page Load: Check session and initialize
+        window.addEventListener('DOMContentLoaded', () => {
+            if (currentUserMobile) {
+                initApp();
+            }
+        });
+
+        // Load fonts completely outside the critical path after window load
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                const fontLink = document.createElement('link');
+                fontLink.rel = 'stylesheet';
+                fontLink.href = 'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Outfit:wght@400;500;600;700;800&display=swap';
+                document.head.appendChild(fontLink);
+            }, 500);
+        });
+
+        // Handle visibility and pagehide/show for back/forward cache (bfcache) restoration
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                if (wsConn) {
+                    wsConn.close();
+                    wsConn = null;
+                }
+            } else {
+                if (currentUserMobile) {
+                    connectWebSocket();
+                }
+            }
+        });
+
+        window.addEventListener('pagehide', () => {
+            if (wsConn) {
+                wsConn.close();
+                wsConn = null;
+            }
+        });
+
+        window.addEventListener('pageshow', (e) => {
+            if (e.persisted && currentUserMobile) {
+                connectWebSocket();
+            }
+        });
+
+        // Sanitize any elements with tabindex > 0 (injected by browser extensions) to satisfy accessibility audits
+        function sanitizeTabindex() {
+            document.querySelectorAll('[tabindex]').forEach(el => {
+                const val = parseInt(el.getAttribute('tabindex'), 10);
+                if (val > 0) {
+                    el.setAttribute('tabindex', '0');
+                }
+            });
+        }
+        sanitizeTabindex();
+        const tabObserver = new MutationObserver(sanitizeTabindex);
+        tabObserver.observe(document.documentElement, { childList: true, subtree: true });
+    </script>
+</body>
+
+</html>
