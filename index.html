@@ -2730,6 +2730,22 @@
             }
         });
 
+        // Unregister service worker if any exists
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(registrations => {
+                for (const registration of registrations) {
+                    registration.unregister().then(() => {
+                        console.log('Successfully unregistered service worker.');
+                        if ('caches' in window) {
+                            caches.keys().then(names => {
+                                for (let name of names) caches.delete(name);
+                            });
+                        }
+                    });
+                }
+            });
+        }
+
         // Sanitize any elements with tabindex > 0 (injected by browser extensions) to satisfy accessibility audits
         function sanitizeTabindex() {
             document.querySelectorAll('[tabindex]').forEach(el => {
