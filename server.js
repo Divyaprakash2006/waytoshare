@@ -500,6 +500,17 @@ wss.on('connection', ws => {
                     }
                 }
             }
+
+            if (type && type.startsWith('relay-')) {
+                console.log(`relay: Forwarding message type ${type} for room ${room}`);
+                const r = rooms[room];
+                if (r) {
+                    const targetSocket = (ws === r.sender) ? r.receiver : r.sender;
+                    if (targetSocket) {
+                        targetSocket.send(raw.toString());
+                    }
+                }
+            }
         } catch (e) {
             console.error('Error handling WebSocket message:', e);
         }

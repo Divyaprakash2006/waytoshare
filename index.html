@@ -1659,12 +1659,19 @@
         let authMode = 'login'; // 'login' or 'register'
         let currentUserMobile = localStorage.getItem('userMobile') || null;
         let activeSenderMobile = null;
+        let relayTimeout = null;
+        let fileWritable = null, useMemoryBuffer = false, meta = null, chunks = [], rcvd = 0;
 
         function trackStates(pc, name) {
             pc.onconnectionstatechange = () => {
                 console.log(`${name} connectionState:`, pc.connectionState);
                 if (pc.connectionState === 'failed') {
-                    alert(`${name} WebRTC connection failed! Please retry.`);
+                    if (name === 'Sender' && activeRoom) {
+                        console.log("Sender WebRTC failed. Triggering WebSocket Relay fallback...");
+                        startWebSocketRelay();
+                    } else {
+                        alert(`${name} WebRTC connection failed! Please retry.`);
+                    }
                 }
             };
             pc.oniceconnectionstatechange = () => {
@@ -1823,13 +1830,266 @@
             }
         });
 
+        function sendWs(data) {
+            if (wsConn && wsConn.readyState === WebSocket.OPEN) {
+                wsConn.send(JSON.stringify(data));
+            } else {
+                console.warn("WebSocket not open. ReadyState:", wsConn ? wsConn.readyState : 'null');
+                if (data && data.type === 'initiate-transfer') {
+                    alert("Signaling server is still connecting. Please wait a moment and try again.");
+                }
+            }
+        }
+
+        function blobToBase64(blob) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    const base64 = reader.result.split(',')[1];
+                    resolve(base64);
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+        }
+
+        function base64ToArrayBuffer(base64) {
+            const binaryString = window.atob(base64);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        function startWebSocketRelay() {
+            if (relayTimeout) {
+                clearTimeout(relayTimeout);
+                relayTimeout = null;
+            }
+            if (sPc) {
+                try { sPc.close(); } catch(e) {}
+                sPc = null;
+            }
+            console.log("Starting WebSocket Relay mode...");
+            status('speer', 'info', 'WebRTC failed/timed out. Switching to WebSocket Relay...', true);
+            sendWs({
+                type: 'relay-start',
+                room: activeRoom
+            });
+            sendWs({
+                type: 'relay-meta',
+                room: activeRoom,
+                name: selFile.name,
+                size: selFile.size,
+                mime: selFile.type
+            });
+        }
+
+        async function sendRelayFile() {
+            if (!selFile || !wsConn || wsConn.readyState !== WebSocket.OPEN) return;
+            $('sprog').style.display = 'block';
+            $('sprogn').textContent = selFile.name;
+
+            const total = selFile.size;
+            let offset = 0;
+            const chunkSize = 65536; // 64KB chunks
+
+            async function pump() {
+                if (offset < total) {
+                    const end = Math.min(offset + chunkSize, total);
+                    const slice = selFile.slice(offset, end);
+                    try {
+                        const base64 = await blobToBase64(slice);
+                        sendWs({
+                            type: 'relay-chunk',
+                            room: activeRoom,
+                            chunk: base64
+                        });
+                        offset = end;
+                        const pct = Math.round(offset / total * 100);
+                        $('sprogf').style.width = pct + '%';
+                        $('sprogp').textContent = pct + '%';
+                        
+                        setTimeout(pump, 10);
+                    } catch (err) {
+                        console.error("Relay transfer read/send error:", err);
+                        status('speer', 'err', 'Relay transfer error.');
+                    }
+                } else {
+                    status('sdone', 'ok', 'Transfer complete (via Relay)!');
+                    done('sd3');
+
+                    apiRequest('/api/history', 'POST', {
+                        fileName: selFile.name,
+                        fileSize: selFile.size,
+                        direction: 'sent',
+                        peerMobile: $('target-mobile').value.trim(),
+                        status: 'success'
+                    }).catch(e => console.error('Failed to log transfer history:', e));
+                }
+            }
+
+            pump();
+        }
+
+        async function processIncomingChunk(dataBuffer) {
+            rcvd += dataBuffer.byteLength;
+            const pct = Math.min(100, Math.round(rcvd / meta.size * 100));
+            $('rprogf').style.width = pct + '%';
+            $('rprogp').textContent = pct + '%';
+
+            if (fileWritable) {
+                await fileWritable.write(dataBuffer);
+            } else if (useMemoryBuffer) {
+                chunks.push(dataBuffer);
+            }
+
+            if (rcvd >= meta.size) {
+                $('rprog').style.display = 'none';
+                status('rstat', 'ok', 'Transfer complete!');
+                
+                if (fileWritable) {
+                    await fileWritable.close();
+                    fileWritable = null;
+                    
+                    const el = document.createElement('div');
+                    el.className = 'ri';
+                    el.innerHTML = `
+                        <svg viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;flex-shrink:0;">
+                            <circle cx="12" cy="12" r="10" />
+                            <polyline points="12 8 12 12 16 14" />
+                        </svg>
+                        <span class="rn">${meta.name}</span>
+                        <span class="rs">${fmt(meta.size)}</span>
+                        <span style="color:var(--green); font-size:0.76rem; font-family:var(--mono); font-weight: 600;">Saved directly to disk</span>
+                    `;
+                    $('rfiles').appendChild(el);
+                } else if (useMemoryBuffer) {
+                    const url = URL.createObjectURL(new Blob(chunks, { type: meta.mime || 'application/octet-stream' }));
+                    const el = document.createElement('div');
+                    el.className = 'ri';
+                    el.innerHTML = `<svg viewBox="0 0 24 24"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg><span class="rn">${meta.name}</span><span class="rs">${fmt(meta.size)}</span><a href="${url}" download="${meta.name}">↓ Download</a>`;
+                    $('rfiles').appendChild(el);
+                }
+
+                apiRequest('/api/history', 'POST', {
+                    fileName: meta.name,
+                    fileSize: meta.size,
+                    direction: 'received',
+                    peerMobile: activeSenderMobile || 'Unknown',
+                    status: 'success'
+                }).catch(e => console.error('Failed to log transfer history:', e));
+            }
+        }
+
+        async function showIncomingAcceptPrompt(meta, channelOrMode) {
+            $('rwait').style.display = 'none';
+            
+            const el = document.createElement('div');
+            el.id = 'accept-prompt-card';
+            el.className = 'card';
+            el.style.border = '1px solid var(--accent)';
+            el.style.boxShadow = '0 4px 16px rgba(91, 141, 238, 0.15)';
+            
+            const hasFileSystemAccess = typeof window.showSaveFilePicker === 'function';
+            
+            el.innerHTML = `
+                <div class="ch">
+                    <div class="sd blue">📩</div>
+                    <div>
+                        <div class="ct">Incoming File Offer</div>
+                        <div class="cs">from target mobile device</div>
+                    </div>
+                </div>
+                <div style="background: var(--s2); border: 1px solid var(--b2); border-radius:10px; padding:12px; margin-bottom:12px;">
+                    <div style="font-family:var(--mono); font-size:0.8rem; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${meta.name}</div>
+                    <div style="font-family:var(--mono); font-size:0.72rem; color:var(--muted); margin-top:2px;">Size: ${fmt(meta.size)}</div>
+                </div>
+                ${!hasFileSystemAccess && meta.size > 1.5 * 1024 * 1024 * 1024 ? `
+                    <div class="st err" style="margin-bottom:12px; font-size:0.74rem;">
+                        <div class="dot"></div>
+                        <span>Warning: This file is very large (${fmt(meta.size)}). Your browser doesn't support streaming to disk, so receiving it might crash your tab. Please use Chrome or Edge for large files.</span>
+                    </div>
+                ` : ''}
+                <div class="brow">
+                    <button class="btn bp bsm" id="accept-save-btn" type="button" aria-label="Accept incoming file offer and save to disk">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;">
+                            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                            <polyline points="17 21 17 13 7 13 7 21"/>
+                            <polyline points="7 3 7 8 15 8"/>
+                        </svg>
+                        Accept & Save to Disk
+                    </button>
+                    <button class="btn bh bsm" id="reject-btn" type="button" style="border-color:var(--red); color:var(--red);" aria-label="Decline incoming file offer">Decline</button>
+                </div>
+            `;
+            
+            $('rfiles').appendChild(el);
+            
+            $('accept-save-btn').onclick = async () => {
+                $('accept-save-btn').disabled = true;
+                $('reject-btn').disabled = true;
+                
+                if (hasFileSystemAccess) {
+                    try {
+                        const handle = await window.showSaveFilePicker({
+                            suggestedName: meta.name
+                        });
+                        fileWritable = await handle.createWritable();
+                        
+                        el.remove();
+                        
+                        $('rprog').style.display = 'block';
+                        $('rprogn').textContent = meta.name;
+                        $('rprogf').style.width = '0%';
+                        $('rprogp').textContent = '0%';
+                        
+                        if (channelOrMode === 'relay') {
+                            sendWs({ type: 'relay-accept', room: activeRoom });
+                        } else {
+                            channelOrMode.send(JSON.stringify({ t: 'ready' }));
+                        }
+                    } catch (err) {
+                        $('accept-save-btn').disabled = false;
+                        $('reject-btn').disabled = false;
+                        console.error("Save file picker error:", err);
+                    }
+                } else {
+                    useMemoryBuffer = true;
+                    el.remove();
+                    
+                    $('rprog').style.display = 'block';
+                    $('rprogn').textContent = meta.name;
+                    $('rprogf').style.width = '0%';
+                    $('rprogp').textContent = '0%';
+                    
+                    if (channelOrMode === 'relay') {
+                        sendWs({ type: 'relay-accept', room: activeRoom });
+                    } else {
+                        channelOrMode.send(JSON.stringify({ t: 'ready' }));
+                    }
+                }
+            };
+            
+            $('reject-btn').onclick = () => {
+                el.remove();
+                $('rwait').style.display = 'block';
+                if (channelOrMode === 'relay') {
+                    sendWs({ type: 'relay-reject', room: activeRoom });
+                } else {
+                    channelOrMode.close();
+                }
+            };
+        }
+
         function connectWebSocket() {
             if (wsConn && wsConn.readyState === 1) return;
 
             wsConn = new WebSocket(SIG_URL);
 
             wsConn.onopen = () => {
-                wsConn.send(JSON.stringify({ type: 'auth', mobile: currentUserMobile }));
+                sendWs({ type: 'auth', mobile: currentUserMobile });
                 status('rstat', 'info', 'Connected to signaling server');
             };
 
@@ -1856,11 +2116,24 @@
                     if (sPc) {
                         try { sPc.close(); } catch(e) {}
                     }
+
+                    if (relayTimeout) clearTimeout(relayTimeout);
+                    relayTimeout = setTimeout(() => {
+                        if (!sCh || sCh.readyState !== 'open') {
+                            console.log("WebRTC connection timed out (6s). Falling back to WebSocket relay...");
+                            startWebSocketRelay();
+                        }
+                    }, 6000);
+
                     sPc = new RTCPeerConnection(ICE);
                     trackStates(sPc, 'Sender');
                     sCh = sPc.createDataChannel('fd');
 
                     sCh.onopen = () => {
+                        if (relayTimeout) {
+                            clearTimeout(relayTimeout);
+                            relayTimeout = null;
+                        }
                         status('speer', 'info', 'Connected! Waiting for recipient to accept...', true);
                         unlock('sc3');
                         sCh.send(JSON.stringify({ t: 'meta', name: selFile.name, size: selFile.size, mime: selFile.type }));
@@ -1880,13 +2153,13 @@
 
                     sPc.onicecandidate = ev => {
                         if (ev.candidate) {
-                            wsConn.send(JSON.stringify({ type: 'ice', room: activeRoom, candidate: ev.candidate.toJSON() }));
+                            sendWs({ type: 'ice', room: activeRoom, candidate: ev.candidate.toJSON() });
                         }
                     };
 
                     const offer = await sPc.createOffer();
                     await sPc.setLocalDescription(offer);
-                    wsConn.send(JSON.stringify({ type: 'offer', room: activeRoom, sdp: offer }));
+                    sendWs({ type: 'offer', room: activeRoom, sdp: offer });
                 }
 
                 if (msg.type === 'answer') {
@@ -1921,7 +2194,7 @@
 
                     rPc.onicecandidate = ev => {
                         if (ev.candidate) {
-                            wsConn.send(JSON.stringify({ type: 'ice', room: activeRoom, candidate: ev.candidate.toJSON() }));
+                            sendWs({ type: 'ice', room: activeRoom, candidate: ev.candidate.toJSON() });
                         }
                     };
                     rPc.ondatachannel = ev => setupRecv(ev.channel);
@@ -1929,7 +2202,7 @@
                     await rPc.setRemoteDescription(msg.sdp);
                     const ans = await rPc.createAnswer();
                     await rPc.setLocalDescription(ans);
-                    wsConn.send(JSON.stringify({ type: 'answer', room: activeRoom, sdp: ans }));
+                    sendWs({ type: 'answer', room: activeRoom, sdp: ans });
 
                     while (rIceQueue.length > 0) {
                         const candidate = rIceQueue.shift();
@@ -1962,6 +2235,10 @@
                 }
 
                 if (msg.type === 'peer-disconnected') {
+                    if (relayTimeout) {
+                        clearTimeout(relayTimeout);
+                        relayTimeout = null;
+                    }
                     if (sPc) {
                         status('speer', 'warn', 'Recipient disconnected.');
                         sPc.close();
@@ -1974,6 +2251,48 @@
                         $('rwait').style.display = 'block';
                     }
                     currentRole = null;
+                }
+
+                // --- WEBSOCKET RELAY FLOW EVENTS ---
+                if (msg.type === 'relay-start') {
+                    activeRoom = msg.room;
+                    currentRole = 'receiver';
+                    rIceQueue = [];
+                    if (rPc) {
+                        try { rPc.close(); } catch(e) {}
+                        rPc = null;
+                    }
+                    status('rstat', 'info', 'Switched to WebSocket Relay mode. Waiting for file info...', true);
+                    unlock('rc2');
+                }
+
+                if (msg.type === 'relay-meta') {
+                    activeRoom = msg.room;
+                    currentRole = 'receiver';
+                    meta = { name: msg.name, size: msg.size, mime: msg.mime };
+                    chunks = [];
+                    rcvd = 0;
+                    fileWritable = null;
+                    useMemoryBuffer = false;
+                    showIncomingAcceptPrompt(meta, 'relay');
+                }
+
+                if (msg.type === 'relay-accept') {
+                    status('speer', 'ok', 'Recipient accepted! Transferring file via relay...');
+                    sendRelayFile();
+                }
+
+                if (msg.type === 'relay-reject') {
+                    status('speer', 'warn', 'Recipient declined relay transfer.');
+                    if (relayTimeout) {
+                        clearTimeout(relayTimeout);
+                        relayTimeout = null;
+                    }
+                }
+
+                if (msg.type === 'relay-chunk') {
+                    const buffer = base64ToArrayBuffer(msg.chunk);
+                    processIncomingChunk(buffer);
                 }
             };
         }
@@ -2157,11 +2476,11 @@
             $('schip').style.display = 'flex';
 
             status('speer', 'info', `Initiating transfer to ${targetMobile}...`, true);
-            wsConn.send(JSON.stringify({
+            sendWs({
                 type: 'initiate-transfer',
                 sender: currentUserMobile,
                 target: targetMobile
-            }));
+            });
         }
 
         // ── SENDER: send file ────────────────────────────────
@@ -2208,103 +2527,12 @@
         }
 
         function setupRecv(ch) {
-            let fileWritable = null;
-            let useMemoryBuffer = false;
-            let meta = null, chunks = [], rcvd = 0;
             ch.binaryType = 'arraybuffer';
 
             ch.onopen = () => {
                 $('rwait').style.display = 'none';
                 status('rstat', 'ok', `P2P Connected! Ready to receive.`);
             };
-
-            async function showIncomingAcceptPrompt(meta, ch) {
-                $('rwait').style.display = 'none';
-                
-                const el = document.createElement('div');
-                el.id = 'accept-prompt-card';
-                el.className = 'card';
-                el.style.border = '1px solid var(--accent)';
-                el.style.boxShadow = '0 4px 16px rgba(91, 141, 238, 0.15)';
-                
-                const hasFileSystemAccess = typeof window.showSaveFilePicker === 'function';
-                
-                el.innerHTML = `
-                    <div class="ch">
-                        <div class="sd blue">📩</div>
-                        <div>
-                            <div class="ct">Incoming File Offer</div>
-                            <div class="cs">from target mobile device</div>
-                        </div>
-                    </div>
-                    <div style="background: var(--s2); border: 1px solid var(--b2); border-radius:10px; padding:12px; margin-bottom:12px;">
-                        <div style="font-family:var(--mono); font-size:0.8rem; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${meta.name}</div>
-                        <div style="font-family:var(--mono); font-size:0.72rem; color:var(--muted); margin-top:2px;">Size: ${fmt(meta.size)}</div>
-                    </div>
-                    ${!hasFileSystemAccess && meta.size > 1.5 * 1024 * 1024 * 1024 ? `
-                        <div class="st err" style="margin-bottom:12px; font-size:0.74rem;">
-                            <div class="dot"></div>
-                            <span>Warning: This file is very large (${fmt(meta.size)}). Your browser doesn't support streaming to disk, so receiving it might crash your tab. Please use Chrome or Edge for large files.</span>
-                        </div>
-                    ` : ''}
-                    <div class="brow">
-                        <button class="btn bp bsm" id="accept-save-btn" type="button" aria-label="Accept incoming file offer and save to disk">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;">
-                                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-                                <polyline points="17 21 17 13 7 13 7 21"/>
-                                <polyline points="7 3 7 8 15 8"/>
-                            </svg>
-                            Accept & Save to Disk
-                        </button>
-                        <button class="btn bh bsm" id="reject-btn" type="button" style="border-color:var(--red); color:var(--red);" aria-label="Decline incoming file offer">Decline</button>
-                    </div>
-                `;
-                
-                $('rfiles').appendChild(el);
-                
-                $('accept-save-btn').onclick = async () => {
-                    $('accept-save-btn').disabled = true;
-                    $('reject-btn').disabled = true;
-                    
-                    if (hasFileSystemAccess) {
-                        try {
-                            const handle = await window.showSaveFilePicker({
-                                suggestedName: meta.name
-                            });
-                            fileWritable = await handle.createWritable();
-                            
-                            el.remove();
-                            
-                            $('rprog').style.display = 'block';
-                            $('rprogn').textContent = meta.name;
-                            $('rprogf').style.width = '0%';
-                            $('rprogp').textContent = '0%';
-                            
-                            ch.send(JSON.stringify({ t: 'ready' }));
-                        } catch (err) {
-                            $('accept-save-btn').disabled = false;
-                            $('reject-btn').disabled = false;
-                            console.error("Save file picker error:", err);
-                        }
-                    } else {
-                        useMemoryBuffer = true;
-                        el.remove();
-                        
-                        $('rprog').style.display = 'block';
-                        $('rprogn').textContent = meta.name;
-                        $('rprogf').style.width = '0%';
-                        $('rprogp').textContent = '0%';
-                        
-                        ch.send(JSON.stringify({ t: 'ready' }));
-                    }
-                };
-                
-                $('reject-btn').onclick = () => {
-                    el.remove();
-                    $('rwait').style.display = 'block';
-                    ch.close();
-                };
-            }
 
             ch.onmessage = async ev => {
                 if (typeof ev.data === 'string') {
@@ -2325,54 +2553,7 @@
                 }
 
                 if (!meta) return;
-                
-                rcvd += ev.data.byteLength;
-                const pct = Math.min(100, Math.round(rcvd / meta.size * 100));
-                $('rprogf').style.width = pct + '%';
-                $('rprogp').textContent = pct + '%';
-
-                if (fileWritable) {
-                    await fileWritable.write(ev.data);
-                } else if (useMemoryBuffer) {
-                    chunks.push(ev.data);
-                }
-
-                if (rcvd >= meta.size) {
-                    $('rprog').style.display = 'none';
-                    status('rstat', 'ok', 'Transfer complete!');
-                    
-                    if (fileWritable) {
-                        await fileWritable.close();
-                        fileWritable = null;
-                        
-                        const el = document.createElement('div');
-                        el.className = 'ri';
-                        el.innerHTML = `
-                            <svg viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;flex-shrink:0;">
-                                <circle cx="12" cy="12" r="10" />
-                                <polyline points="12 8 12 12 16 14" />
-                            </svg>
-                            <span class="rn">${meta.name}</span>
-                            <span class="rs">${fmt(meta.size)}</span>
-                            <span style="color:var(--green); font-size:0.76rem; font-family:var(--mono); font-weight: 600;">Saved directly to disk</span>
-                        `;
-                        $('rfiles').appendChild(el);
-                    } else if (useMemoryBuffer) {
-                        const url = URL.createObjectURL(new Blob(chunks, { type: meta.mime || 'application/octet-stream' }));
-                        const el = document.createElement('div');
-                        el.className = 'ri';
-                        el.innerHTML = `<svg viewBox="0 0 24 24"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg><span class="rn">${meta.name}</span><span class="rs">${fmt(meta.size)}</span><a href="${url}" download="${meta.name}">↓ Download</a>`;
-                        $('rfiles').appendChild(el);
-                    }
-
-                    apiRequest('/api/history', 'POST', {
-                        fileName: meta.name,
-                        fileSize: meta.size,
-                        direction: 'received',
-                        peerMobile: activeSenderMobile || 'Unknown',
-                        status: 'success'
-                    }).catch(e => console.error('Failed to log transfer history:', e));
-                }
+                processIncomingChunk(ev.data);
             };
         }
 
