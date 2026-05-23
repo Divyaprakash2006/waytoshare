@@ -340,7 +340,8 @@ const server = http.createServer((req, res) => {
     }
 
     // --- Static File Server ---
-    let filePath = path.join(__dirname, req.url === '/' ? 'index.html' : req.url);
+    const pathname = req.url.split('?')[0];
+    let filePath = path.join(__dirname, pathname === '/' ? 'index.html' : pathname);
 
     if (!filePath.startsWith(__dirname)) {
         res.writeHead(403, { 'Content-Type': 'text/plain' });
@@ -363,6 +364,7 @@ const server = http.createServer((req, res) => {
             if (ext === '.js') contentType = 'text/javascript';
             if (ext === '.css') contentType = 'text/css';
             if (ext === '.json') contentType = 'application/json';
+            if (ext === '.png') contentType = 'image/png';
 
             const acceptEncoding = req.headers['accept-encoding'] || '';
             if (acceptEncoding.includes('gzip')) {
@@ -380,7 +382,7 @@ const server = http.createServer((req, res) => {
                 });
             } else {
                 res.writeHead(200, { 'Content-Type': contentType });
-                res.end(content, 'utf-8');
+                res.end(content);
             }
         }
     });

@@ -7,6 +7,19 @@
     <title>WayToShare - Target P2P File Drop</title>
     <meta name="description" content="WayToShare is a secure, instant, peer-to-peer (P2P) file sharing tool using direct WebRTC channels and mobile target routing with zero server storage." />
     <meta name="keywords" content="P2P sharing, WebRTC file transfer, FileDrop, secure direct sharing, mobile target routing" />
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json">
+
+    <!-- Theme color for browser bar -->
+    <meta name="theme-color" content="#0c0e14">
+
+    <!-- iOS support -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="WayToShare">
+    <link rel="apple-touch-icon" href="/icons/icon-192.png">
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <style>
@@ -2708,6 +2721,18 @@
         </div>
         <div id="diagnostics-logs" style="display:flex; flex-direction:column; gap:4px; max-height:160px; overflow-y:auto;"></div>
     </div>
+
+    <!-- Service Worker Registration -->
+    <script>
+        if ("serviceWorker" in navigator) {
+            window.addEventListener("load", () => {
+                navigator.serviceWorker
+                    .register("/service-worker.js")
+                    .then(() => console.log("✅ Service Worker registered"))
+                    .catch((err) => console.log("❌ Error:", err));
+            });
+        }
+    </script>
 </body>
 
 </html>
