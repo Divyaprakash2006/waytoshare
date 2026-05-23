@@ -407,9 +407,11 @@ wss.on('connection', ws => {
 
             if (type === 'initiate-transfer') {
                 const { sender, target } = msg;
+                console.log(`initiate-transfer: from=${sender} to=${target}`);
                 const targetWs = clients[target];
 
                 if (!targetWs) {
+                    console.log(`initiate-transfer: Recipient ${target} is offline`);
                     ws.send(JSON.stringify({ type: 'error', message: 'Recipient is offline' }));
                     return;
                 }
@@ -423,6 +425,8 @@ wss.on('connection', ws => {
                     senderCandidates: [],
                     receiverCandidates: []
                 };
+
+                console.log(`initiate-transfer: Created room ${roomKey}`);
 
                 targetWs.send(JSON.stringify({
                     type: 'incoming-transfer',
@@ -438,40 +442,60 @@ wss.on('connection', ws => {
             }
 
             if (type === 'offer') {
+                console.log(`offer: Received offer for room ${room}`);
                 const r = rooms[room];
                 if (r) {
                     r.offer = msg;
                     if (r.receiver) {
+                        console.log(`offer: Forwarding offer to receiver`);
                         r.receiver.send(raw.toString());
+                    } else {
+                        console.log(`offer: Receiver is not available in room`);
                     }
+                } else {
+                    console.log(`offer: Room ${room} not found`);
                 }
             }
 
             if (type === 'answer') {
+                console.log(`answer: Received answer for room ${room}`);
                 const r = rooms[room];
                 if (r) {
                     if (r.sender) {
+                        console.log(`answer: Forwarding answer to sender`);
                         r.sender.send(raw.toString());
+                    } else {
+                        console.log(`answer: Sender is not available in room`);
                     }
                     if (r.receiverCandidates && r.receiverCandidates.length > 0) {
+                        console.log(`answer: Forwarding ${r.receiverCandidates.length} queued receiver candidates`);
                         for (const candMsg of r.receiverCandidates) {
                             r.sender.send(JSON.stringify(candMsg));
                         }
                     }
+                } else {
+                    console.log(`answer: Room ${room} not found`);
                 }
             }
 
             if (type === 'ice') {
+                console.log(`ice: Received ICE candidate from ${ws.mobile || 'unknown'} for room ${room}`);
                 const r = rooms[room];
-                if (!r) return;
+                if (!r) {
+                    console.log(`ice: Room ${room} not found`);
+                    return;
+                }
                 const targetSocket = (ws === r.sender) ? r.receiver : r.sender;
 
                 if (targetSocket) {
+                    console.log(`ice: Direct forwarding candidate to ${targetSocket.mobile || 'peer'}`);
                     targetSocket.send(raw.toString());
                 } else {
                     if (ws === r.sender) {
+                        console.log(`ice: Queueing sender candidate`);
                         r.senderCandidates.push(msg);
                     } else {
+                        console.log(`ice: Queueing receiver candidate`);
                         r.receiverCandidates.push(msg);
                     }
                 }

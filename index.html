@@ -1596,6 +1596,46 @@
     </div>
 
     <script>
+        // Global error tracking for debugging
+        window.addEventListener('error', e => {
+            console.error("Global Error Caught:", e);
+            alert("Application Error: " + e.message);
+        });
+        window.addEventListener('unhandledrejection', e => {
+            console.error("Unhandled Promise Rejection:", e.reason);
+            alert("Promise Error: " + (e.reason ? e.reason.message || e.reason : e.reason));
+        });
+
+        // On-screen diagnostics overlay logging
+        function uilog(msg, isError = false) {
+            const logsDiv = document.getElementById('diagnostics-logs');
+            if (!logsDiv) return;
+            const entry = document.createElement('div');
+            entry.style.color = isError ? 'var(--red)' : '#fff';
+            entry.style.borderBottom = '1px dashed var(--b1)';
+            entry.style.paddingBottom = '2px';
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            logsDiv.appendChild(entry);
+            logsDiv.scrollTop = logsDiv.scrollHeight;
+        }
+
+        // Intercept console messages and show them in our overlay
+        const _log = console.log;
+        const _error = console.error;
+        const _warn = console.warn;
+        console.log = function(...args) {
+            _log.apply(console, args);
+            uilog(args.join(' '));
+        };
+        console.error = function(...args) {
+            _error.apply(console, args);
+            uilog(args.join(' '), true);
+        };
+        console.warn = function(...args) {
+            _warn.apply(console, args);
+            uilog(args.join(' '), true);
+        };
+
         // ══════════════════════════════════════════════════════
         //  ⚙  Signaling server URL auto-detected
         // ══════════════════════════════════════════════════════
@@ -1614,10 +1654,26 @@
 
         let wsConn = null, sPc = null, rPc = null, sCh = null, selFile = null;
         let sIceQueue = [], rIceQueue = [];
+        let currentRole = null; // 'sender' or 'receiver' to correctly route ICE candidates
         let activeRoom = null;
         let authMode = 'login'; // 'login' or 'register'
         let currentUserMobile = localStorage.getItem('userMobile') || null;
         let activeSenderMobile = null;
+
+        function trackStates(pc, name) {
+            pc.onconnectionstatechange = () => {
+                console.log(`${name} connectionState:`, pc.connectionState);
+                if (pc.connectionState === 'failed') {
+                    alert(`${name} WebRTC connection failed! Please retry.`);
+                }
+            };
+            pc.oniceconnectionstatechange = () => {
+                console.log(`${name} iceConnectionState:`, pc.iceConnectionState);
+            };
+            pc.onsignalingstatechange = () => {
+                console.log(`${name} signalingState:`, pc.signalingState);
+            };
+        }
 
         // ── API request helper ───────────────────────────────
         async function apiRequest(endpoint, method = 'GET', body = null) {
@@ -1793,6 +1849,7 @@
                 // --- SENDER FLOW EVENTS ---
                 if (msg.type === 'transfer-initiated') {
                     activeRoom = msg.room;
+                    currentRole = 'sender';
                     status('speer', 'info', 'Connecting WebRTC P2P channel...', true);
 
                     sIceQueue = [];
@@ -1800,6 +1857,7 @@
                         try { sPc.close(); } catch(e) {}
                     }
                     sPc = new RTCPeerConnection(ICE);
+                    trackStates(sPc, 'Sender');
                     sCh = sPc.createDataChannel('fd');
 
                     sCh.onopen = () => {
@@ -1822,21 +1880,23 @@
 
                     sPc.onicecandidate = ev => {
                         if (ev.candidate) {
-                            wsConn.send(JSON.stringify({ type: 'ice', room: activeRoom, candidate: ev.candidate }));
+                            wsConn.send(JSON.stringify({ type: 'ice', room: activeRoom, candidate: ev.candidate.toJSON() }));
                         }
                     };
 
                     const offer = await sPc.createOffer();
                     await sPc.setLocalDescription(offer);
-                    wsConn.send(JSON.stringify({ type: 'offer', room: activeRoom, sdp: btoa(JSON.stringify(sPc.localDescription)) }));
+                    wsConn.send(JSON.stringify({ type: 'offer', room: activeRoom, sdp: offer }));
                 }
 
                 if (msg.type === 'answer') {
-                    await sPc.setRemoteDescription(new RTCSessionDescription(JSON.parse(atob(msg.sdp))));
+                    await sPc.setRemoteDescription(msg.sdp);
 
                     while (sIceQueue.length > 0) {
                         const candidate = sIceQueue.shift();
-                        sPc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => { });
+                        if (candidate) {
+                            sPc.addIceCandidate(candidate).catch(e => console.error("Sender queued addIceCandidate failed:", e));
+                        }
                     }
                 }
 
@@ -1844,6 +1904,7 @@
                 if (msg.type === 'incoming-transfer') {
                     activeRoom = msg.room;
                     activeSenderMobile = msg.sender;
+                    currentRole = 'receiver';
                     rIceQueue = [];
                     status('rstat', 'info', `Incoming transfer from ${msg.sender}. Connecting P2P...`, true);
                     unlock('rc2');
@@ -1851,40 +1912,48 @@
 
                 if (msg.type === 'offer') {
                     activeRoom = msg.room;
+                    currentRole = 'receiver';
                     if (rPc) {
                         try { rPc.close(); } catch(e) {}
                     }
                     rPc = new RTCPeerConnection(ICE);
+                    trackStates(rPc, 'Receiver');
 
                     rPc.onicecandidate = ev => {
                         if (ev.candidate) {
-                            wsConn.send(JSON.stringify({ type: 'ice', room: activeRoom, candidate: ev.candidate }));
+                            wsConn.send(JSON.stringify({ type: 'ice', room: activeRoom, candidate: ev.candidate.toJSON() }));
                         }
                     };
                     rPc.ondatachannel = ev => setupRecv(ev.channel);
 
-                    await rPc.setRemoteDescription(new RTCSessionDescription(JSON.parse(atob(msg.sdp))));
+                    await rPc.setRemoteDescription(msg.sdp);
                     const ans = await rPc.createAnswer();
                     await rPc.setLocalDescription(ans);
-                    wsConn.send(JSON.stringify({ type: 'answer', room: activeRoom, sdp: btoa(JSON.stringify(rPc.localDescription)) }));
+                    wsConn.send(JSON.stringify({ type: 'answer', room: activeRoom, sdp: ans }));
 
                     while (rIceQueue.length > 0) {
                         const candidate = rIceQueue.shift();
-                        rPc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => { });
+                        if (candidate) {
+                            rPc.addIceCandidate(candidate).catch(e => console.error("Receiver queued addIceCandidate failed:", e));
+                        }
                     }
 
-                    status('rstat', 'ok', `P2P Connected! Receiving file...`);
+                    status('rstat', 'info', `Connecting WebRTC P2P channel...`, true);
                 }
 
                 // --- GENERAL EVENTS ---
                 if (msg.type === 'ice') {
-                    const activePc = sPc || rPc;
-                    const activeQueue = sPc ? sIceQueue : rIceQueue;
+                    const activePc = (currentRole === 'sender') ? sPc : rPc;
+                    const activeQueue = (currentRole === 'sender') ? sIceQueue : rIceQueue;
 
                     if (activePc && activePc.remoteDescription) {
-                        activePc.addIceCandidate(new RTCIceCandidate(msg.candidate)).catch(() => { });
+                        if (msg.candidate) {
+                            activePc.addIceCandidate(msg.candidate).catch(e => console.error("Direct addIceCandidate failed:", e));
+                        }
                     } else {
-                        activeQueue.push(msg.candidate);
+                        if (msg.candidate) {
+                            activeQueue.push(msg.candidate);
+                        }
                     }
                 }
 
@@ -1904,6 +1973,7 @@
                         rPc = null;
                         $('rwait').style.display = 'block';
                     }
+                    currentRole = null;
                 }
             };
         }
@@ -2145,6 +2215,7 @@
 
             ch.onopen = () => {
                 $('rwait').style.display = 'none';
+                status('rstat', 'ok', `P2P Connected! Ready to receive.`);
             };
 
             async function showIncomingAcceptPrompt(meta, ch) {
@@ -2450,6 +2521,15 @@
         const tabObserver = new MutationObserver(sanitizeTabindex);
         tabObserver.observe(document.documentElement, { childList: true, subtree: true });
     </script>
+    
+    <!-- Floating Diagnostics Panel for WebRTC debug -->
+    <div id="diagnostics-panel" style="position:fixed; bottom:10px; right:10px; width:340px; max-height:220px; background:rgba(12,14,20,0.95); border:1.5px solid var(--accent); border-radius:10px; padding:10px; font-family:var(--mono); font-size:10px; color:#fff; overflow-y:auto; z-index:9999; box-shadow:0 4px 20px rgba(0,0,0,0.5); pointer-events:auto; display:block;">
+        <div style="font-weight:bold; border-bottom:1px solid var(--b1); padding-bottom:4px; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
+            <span style="color:var(--accent)">SYSTEM LOGS (DIAGNOSTICS)</span>
+            <button onclick="document.getElementById('diagnostics-panel').style.display='none'" style="background:none; border:none; color:var(--red); cursor:pointer; font-weight:bold; font-size:11px;">[X]</button>
+        </div>
+        <div id="diagnostics-logs" style="display:flex; flex-direction:column; gap:4px; max-height:160px; overflow-y:auto;"></div>
+    </div>
 </body>
 
 </html>
