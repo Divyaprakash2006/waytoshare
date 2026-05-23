@@ -1796,6 +1796,9 @@
                     status('speer', 'info', 'Connecting WebRTC P2P channel...', true);
 
                     sIceQueue = [];
+                    if (sPc) {
+                        try { sPc.close(); } catch(e) {}
+                    }
                     sPc = new RTCPeerConnection(ICE);
                     sCh = sPc.createDataChannel('fd');
 
@@ -1841,13 +1844,16 @@
                 if (msg.type === 'incoming-transfer') {
                     activeRoom = msg.room;
                     activeSenderMobile = msg.sender;
+                    rIceQueue = [];
                     status('rstat', 'info', `Incoming transfer from ${msg.sender}. Connecting P2P...`, true);
                     unlock('rc2');
                 }
 
                 if (msg.type === 'offer') {
                     activeRoom = msg.room;
-                    rIceQueue = [];
+                    if (rPc) {
+                        try { rPc.close(); } catch(e) {}
+                    }
                     rPc = new RTCPeerConnection(ICE);
 
                     rPc.onicecandidate = ev => {
