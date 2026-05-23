@@ -2181,6 +2181,7 @@
                     rIceQueue = [];
                     status('rstat', 'info', `Incoming transfer from ${msg.sender}. Connecting P2P...`, true);
                     unlock('rc2');
+                    switchTab('recv');
                 }
 
                 if (msg.type === 'offer') {
@@ -2264,6 +2265,7 @@
                     }
                     status('rstat', 'info', 'Switched to WebSocket Relay mode. Waiting for file info...', true);
                     unlock('rc2');
+                    switchTab('recv');
                 }
 
                 if (msg.type === 'relay-meta') {
@@ -2664,13 +2666,8 @@
 
         // Handle visibility and pagehide/show for back/forward cache (bfcache) restoration
         document.addEventListener('visibilitychange', () => {
-            if (document.hidden) {
-                if (wsConn) {
-                    wsConn.close();
-                    wsConn = null;
-                }
-            } else {
-                if (currentUserMobile) {
+            if (!document.hidden) {
+                if (currentUserMobile && (!wsConn || wsConn.readyState !== WebSocket.OPEN)) {
                     connectWebSocket();
                 }
             }
