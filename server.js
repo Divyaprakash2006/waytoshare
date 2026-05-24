@@ -310,6 +310,29 @@ const server = http.createServer((req, res) => {
         return;
     }
 
+    // --- History: DELETE ---
+    if (req.method === 'DELETE' && req.url === '/api/history') {
+        getAuthUser(req).then(async user => {
+            if (!user) {
+                res.writeHead(401, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Unauthorized' }));
+                return;
+            }
+            try {
+                await History.deleteMany({ userId: user._id });
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true, message: 'History cleared successfully' }));
+            } catch (err) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Server error' }));
+            }
+        }).catch(err => {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Server auth error' }));
+        });
+        return;
+    }
+
     // --- History: POST ---
     if (req.method === 'POST' && req.url === '/api/history') {
         let body = '';
@@ -523,6 +546,14 @@ wss.on('connection', ws => {
                         targetSocket.send(raw.toString());
                     }
                 }
+            }
+
+            if (type === 'close-room') {
+                console.log(`close-room: Cleaning up room ${room}`);
+                if (rooms[room]) {
+                    delete rooms[room];
+                }
+                return;
             }
         } catch (e) {
             console.error('Error handling WebSocket message:', e);

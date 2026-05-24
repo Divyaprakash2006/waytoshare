@@ -1889,6 +1889,12 @@
                 display: none !important;
             }
         }
+
+        @media (min-width: 769px) {
+            .home-header {
+                display: none !important;
+            }
+        }
     </style>
 </head>
 
@@ -2418,12 +2424,15 @@
                 <!-- ════════ PANEL: HISTORY ════════ -->
                 <div class="panel" id="panel-history">
                     <div class="card">
-                        <div class="ch">
-                            <div class="sd blue">🕒</div>
-                            <div>
-                                <div class="ct">Transfer History</div>
-                                <div class="cs">recent P2P file drop transfers</div>
+                        <div class="ch" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                            <div style="display: flex; align-items: center; gap: 11px;">
+                                <div class="sd blue">🕒</div>
+                                <div>
+                                    <div class="ct">Transfer History</div>
+                                    <div class="cs">recent P2P file drop transfers</div>
+                                </div>
                             </div>
+                            <button class="btn bh bsm" type="button" onclick="clearHistory()" style="border-color: var(--red); color: var(--red);" aria-label="Clear Transfer History">Clear All</button>
                         </div>
                         <div id="history-container" class="hist-list">
                             <!-- Rendered dynamically -->
@@ -2558,6 +2567,7 @@
         let fileWritable = null, useMemoryBuffer = false, meta = null, chunks = [], rcvd = 0;
         let writeQueue = Promise.resolve();
         let p2pTimeout = parseInt(localStorage.getItem('p2pTimeout'), 10) || 6000;
+        let isTransferActive = false;
 
         function trackStates(pc, name) {
             pc.onconnectionstatechange = () => {
@@ -2568,6 +2578,7 @@
                         startWebSocketRelay();
                     } else {
                         alert(`${name} WebRTC connection failed! Please retry.`);
+                        isTransferActive = false;
                     }
                 }
             };
@@ -2683,6 +2694,7 @@
                 wsConn.close();
                 wsConn = null;
             }
+            isTransferActive = false;
 
             const dropdown = document.getElementById('profile-dropdown-menu');
             if (dropdown) {
@@ -2792,11 +2804,15 @@
             const total = selFile.size;
             let offset = 0;
             const chunkSize = 16384 * 8; // 128KB chunks
+            let isPumpRunning = false;
 
             async function pump() {
+                if (isPumpRunning) return;
+                isPumpRunning = true;
                 try {
                     while (offset < total) {
                         if (wsConn.bufferedAmount > 2097152) { // 2MB buffer limit
+                            isPumpRunning = false;
                             setTimeout(pump, 10);
                             return;
                         }
@@ -2815,27 +2831,20 @@
                         const ro = $('sprogr');
                         if (ro) ro.style.left = `calc(${pct}% - (${pct} / 100 * 28px))`;
                     }
-
-                    status('sdone', 'ok', 'Transfer complete (via Relay)!');
-                    done('sd3');
-
-                    apiRequest('/api/history', 'POST', {
-                        fileName: selFile.name,
-                        fileSize: selFile.size,
-                        direction: 'sent',
-                        peerMobile: $('target-mobile').value.trim(),
-                        status: 'success'
-                    }).catch(e => console.error('Failed to log transfer history:', e));
+                    status('speer', 'info', 'All chunks sent via relay. Finalizing...', true);
                 } catch (err) {
                     console.error("Relay transfer read/send error:", err);
                     status('speer', 'err', 'Relay transfer error.');
+                    isTransferActive = false;
+                } finally {
+                    isPumpRunning = false;
                 }
             }
 
             pump();
         }
 
-        async function processIncomingChunk(dataBuffer) {
+        async function processIncomingChunk(dataBuffer, ch = null) {
             rcvd += dataBuffer.byteLength;
             const pct = Math.min(100, Math.round(rcvd / meta.size * 100));
             $('rprogf').style.width = pct + '%';
@@ -2849,6 +2858,9 @@
             }
 
             if (rcvd >= meta.size) {
+                const currentMeta = meta;
+                meta = null; // Set to null immediately to prevent duplicate completion triggers
+
                 $('rprog').style.display = 'none';
                 status('rstat', 'ok', 'Transfer complete!');
 
@@ -2865,8 +2877,8 @@
                                 <circle cx="12" cy="12" r="10" />
                                 <polyline points="12 8 12 12 16 14" />
                             </svg>
-                            <span class="rn">${meta.name}</span>
-                            <span class="rs">${fmt(meta.size)}</span>
+                            <span class="rn">${currentMeta.name}</span>
+                            <span class="rs">${fmt(currentMeta.size)}</span>
                             <span style="color:var(--green); font-size:0.76rem; font-family:var(--mono); font-weight: 600;">Saved directly to disk</span>
                         `;
                         $('rfiles').appendChild(el);
@@ -2875,12 +2887,12 @@
                         status('rstat', 'err', 'File save error: ' + err.message);
                     }
                 } else if (useMemoryBuffer) {
-                    const url = URL.createObjectURL(new Blob(chunks, { type: meta.mime || 'application/octet-stream' }));
+                    const url = URL.createObjectURL(new Blob(chunks, { type: currentMeta.mime || 'application/octet-stream' }));
 
                     // Auto-trigger browser download
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = meta.name;
+                    a.download = currentMeta.name;
                     document.body.appendChild(a);
                     a.click();
                     document.body.removeChild(a);
@@ -2892,20 +2904,40 @@
                             <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
                             <polyline points="13 2 13 9 20 9"/>
                         </svg>
-                        <span class="rn">${meta.name}</span>
-                        <span class="rs">${fmt(meta.size)}</span>
+                        <span class="rn">${currentMeta.name}</span>
+                        <span class="rs">${fmt(currentMeta.size)}</span>
                         <span style="color:var(--green); font-size:0.76rem; font-family:var(--mono); font-weight: 600;">Downloaded automatically</span>
                     `;
                     $('rfiles').appendChild(el);
                 }
 
+                // Send completion acknowledgment to sender
+                if (ch && ch.readyState === 'open') {
+                    try {
+                        ch.send(JSON.stringify({ t: 'complete' }));
+                    } catch (e) {
+                        console.error("Failed to send WebRTC completion message:", e);
+                    }
+                    if (rPc) {
+                        try { rPc.close(); } catch(e){}
+                        rPc = null;
+                    }
+                } else {
+                    // WebSocket Relay mode
+                    sendWs({ type: 'relay-complete', room: activeRoom });
+                }
+
                 apiRequest('/api/history', 'POST', {
-                    fileName: meta.name,
-                    fileSize: meta.size,
+                    fileName: currentMeta.name,
+                    fileSize: currentMeta.size,
                     direction: 'received',
                     peerMobile: activeSenderMobile || 'Unknown',
                     status: 'success'
                 }).catch(e => console.error('Failed to log transfer history:', e));
+
+                activeRoom = null;
+                currentRole = null;
+                isTransferActive = false;
             }
         }
 
@@ -2976,6 +3008,27 @@
                             if (data.t === 'ready') {
                                 status('speer', 'ok', 'Recipient accepted! Transferring file...');
                                 sendFile();
+                            } else if (data.t === 'complete') {
+                                status('sdone', 'ok', 'Transfer complete!');
+                                done('sd3');
+
+                                apiRequest('/api/history', 'POST', {
+                                    fileName: selFile.name,
+                                    fileSize: selFile.size,
+                                    direction: 'sent',
+                                    peerMobile: $('target-mobile').value.trim(),
+                                    status: 'success'
+                                }).catch(e => console.error('Failed to log transfer history:', e));
+
+                                sendWs({ type: 'close-room', room: activeRoom });
+                                if (sPc) {
+                                    try { sPc.close(); } catch(e){}
+                                    sPc = null;
+                                }
+                                sCh = null;
+                                activeRoom = null;
+                                currentRole = null;
+                                isTransferActive = false;
                             }
                         } catch (e) {
                             console.error("Sender got non-JSON channel message:", ev.data);
@@ -3083,6 +3136,7 @@
                         $('rwait').style.display = 'block';
                     }
                     currentRole = null;
+                    isTransferActive = false;
                 }
 
                 // --- WEBSOCKET RELAY FLOW EVENTS ---
@@ -3139,6 +3193,24 @@
                     const buffer = base64ToArrayBuffer(msg.chunk);
                     processIncomingChunk(buffer);
                 }
+
+                if (msg.type === 'relay-complete') {
+                    status('sdone', 'ok', 'Transfer complete (via Relay)!');
+                    done('sd3');
+
+                    apiRequest('/api/history', 'POST', {
+                        fileName: selFile.name,
+                        fileSize: selFile.size,
+                        direction: 'sent',
+                        peerMobile: $('target-mobile').value.trim(),
+                        status: 'success'
+                    }).catch(e => console.error('Failed to log transfer history:', e));
+
+                    sendWs({ type: 'close-room', room: activeRoom });
+                    activeRoom = null;
+                    currentRole = null;
+                    isTransferActive = false;
+                }
             };
         }
 
@@ -3153,7 +3225,8 @@
 
             const dashboardEl = document.querySelector('.dashboard');
             if (dashboardEl) {
-                dashboardEl.classList.toggle('nav-hidden', t === 'home');
+                const isMobile = window.innerWidth <= 768;
+                dashboardEl.classList.toggle('nav-hidden', t === 'home' && isMobile);
             }
 
             if (t === 'home') {
@@ -3348,6 +3421,16 @@
             }
         }
 
+        async function clearHistory() {
+            if (!confirm("Are you sure you want to clear your entire transfer history?")) return;
+            try {
+                await apiRequest('/api/history', 'DELETE');
+                loadHistory();
+            } catch (err) {
+                alert('Failed to clear history: ' + err.message);
+            }
+        }
+
         // ── helpers ──────────────────────────────────────────
         const $ = id => document.getElementById(id);
         const fmt = b => b < 1024 ? b + ' B' : b < 1 << 20 ? (b / 1024).toFixed(1) + ' KB' : (b / (1 << 20)).toFixed(1) + ' MB';
@@ -3469,6 +3552,12 @@
                 return;
             }
 
+            if (isTransferActive) {
+                alert('A file transfer or security scan is currently in progress. Please wait.');
+                return;
+            }
+            isTransferActive = true;
+
             selFile = f;
             $('schipn').textContent = f.name;
             $('schips').textContent = fmt(f.size);
@@ -3543,6 +3632,7 @@
                         reportVt.textContent = `CRITICAL: ${scanStats.malicious} malicious flag(s) found! (Instant Hash Match)`;
                         reportVt.style.color = "var(--red)";
                         status('speer', 'err', 'Transfer blocked: File is flagged as malicious.');
+                        isTransferActive = false;
                         return; // BLOCKED
                     }
 
@@ -3597,6 +3687,7 @@
                             reportVt.textContent = `CRITICAL: ${vtStats.malicious} malicious flag(s) found!`;
                             reportVt.style.color = "var(--red)";
                             status('speer', 'err', 'Transfer blocked: File is flagged as malicious.');
+                            isTransferActive = false;
                             return; // BLOCKED
                         } else if (vtStats.suspicious > 0) {
                             if (reportStatus) {
@@ -3658,13 +3749,17 @@
             let offset = 0;
             const chunkSize = 16384 * 16; // 256KB chunk size (less system/browser overhead)
             const bufferLimit = 1048576 * 2; // 2MB buffer limit
+            let isPumpRunning = false;
 
             sCh.bufferedAmountLowThreshold = 1048576; // 1MB threshold triggers onbufferedamountlow event
 
             async function pump() {
+                if (isPumpRunning) return;
+                isPumpRunning = true;
                 try {
                     while (offset < total) {
                         if (sCh.bufferedAmount > bufferLimit) {
+                            isPumpRunning = false;
                             return; // Stop sending and wait for onbufferedamountlow event
                         }
                         const end = Math.min(offset + chunkSize, total);
@@ -3679,20 +3774,13 @@
                         const ro = $('sprogr');
                         if (ro) ro.style.left = `calc(${pct}% - (${pct} / 100 * 28px))`;
                     }
-
-                    status('sdone', 'ok', 'Transfer complete!');
-                    done('sd3');
-
-                    apiRequest('/api/history', 'POST', {
-                        fileName: selFile.name,
-                        fileSize: selFile.size,
-                        direction: 'sent',
-                        peerMobile: $('target-mobile').value.trim(),
-                        status: 'success'
-                    }).catch(e => console.error('Failed to log transfer history:', e));
+                    status('speer', 'info', 'All chunks sent. Finalizing transfer...', true);
                 } catch (err) {
                     console.error("Error sending file chunk:", err);
                     status('speer', 'err', 'Error sending file: ' + err.message);
+                    isTransferActive = false;
+                } finally {
+                    isPumpRunning = false;
                 }
             }
 
@@ -3742,7 +3830,7 @@
                 }
 
                 if (!meta) return;
-                processIncomingChunk(ev.data);
+                processIncomingChunk(ev.data, ch);
             };
         }
 
@@ -3878,6 +3966,16 @@
         window.addEventListener('pageshow', (e) => {
             if (e.persisted && currentUserMobile) {
                 connectWebSocket();
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            const dashboardEl = document.querySelector('.dashboard');
+            if (dashboardEl) {
+                const activeTab = document.querySelector('.menu-item.active');
+                const isHome = activeTab && activeTab.id === 'tab-home';
+                const isMobile = window.innerWidth <= 768;
+                dashboardEl.classList.toggle('nav-hidden', isHome && isMobile);
             }
         });
 
