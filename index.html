@@ -2267,16 +2267,19 @@
                                 style="font-weight: 700; font-size: 0.82rem; color: var(--text); margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
                                 🛡️ SECURITY REPORT
                             </div>
+                            <div id="scan-report-status" style="font-weight: 700; font-size: 0.88rem; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; padding-bottom: 8px; border-bottom: 1px dashed var(--b2);">
+                                <span class="dot pulse" style="background-color: var(--amber);"></span>
+                                <span style="color: var(--amber);">Initializing scanner...</span>
+                            </div>
                             <div
                                 style="display: grid; grid-template-columns: 1fr; gap: 10px; font-size: 0.76rem; font-family: var(--mono);">
-                                <div style="display:flex; flex-direction:column; gap: 4px; overflow: hidden;">
-                                    <span style="color:var(--muted)">Filestack Link:</span>
-                                    <a id="scan-report-filestack" href="#" target="_blank"
-                                        style="color:var(--accent); text-decoration: underline; word-break: break-all;">-</a>
-                                </div>
                                 <div style="display:flex; flex-direction:column; gap: 4px;">
                                     <span style="color:var(--muted)">VirusTotal Stats:</span>
                                     <span id="scan-report-vt" style="font-weight:700;">-</span>
+                                </div>
+                                <div id="scan-report-hash-row" style="display:none; flex-direction:column; gap: 4px; overflow: hidden;">
+                                    <span style="color:var(--muted)">File Hash (SHA-256):</span>
+                                    <span id="scan-report-hash" style="color:var(--text); word-break: break-all;">-</span>
                                 </div>
                             </div>
                         </div>
@@ -2523,8 +2526,14 @@
             (window.location.origin.startsWith('http://localhost') && window.location.port !== '3001' && window.location.port !== '3000') ||
             !!window.Capacitor;
 
-        // Default to localhost if running on a local development origin, else fallback to production URL
-        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        // Default to localhost or local network IPs if running on a local development origin, else fallback to production URL
+        const isLocal = window.location.hostname === 'localhost' ||
+            window.location.hostname === '127.0.0.1' ||
+            window.location.hostname === '[::1]' ||
+            window.location.hostname.startsWith('192.168.') ||
+            window.location.hostname.startsWith('10.') ||
+            window.location.hostname.startsWith('172.') ||
+            window.location.hostname.endsWith('.local');
         const defaultServer = isLocal ? window.location.origin : 'https://waytoshare.onrender.com';
 
         const API_BASE_URL = defaultServer.endsWith('/') ? defaultServer.slice(0, -1) : defaultServer;
@@ -3360,22 +3369,40 @@
 
         // ── pick file + Send trigger ────────────────────────
         const VIRUSTOTAL_API_KEY = "b28d4a6294115d9d6d373c88bcebbcefba191686fdc47b21eb02292ca84f6240";
-        const FILESTACK_API_KEY = "ALa5TeCa8ScSzUstfi5Snz";
 
-        // ─── STEP 1: Upload file to Filestack ───────────────────────────────────────
-        async function uploadToFilestack(file) {
-            const formData = new FormData();
-            formData.append("fileUpload", file);
-
-            const response = await fetch(
-                `https://www.filestackapi.com/api/store/S3?key=${FILESTACK_API_KEY}`,
-                { method: "POST", body: formData }
-            );
-
-            const data = await response.json();
-            console.log("✅ Filestack Upload:", data);
-            return data; // { url, handle, filename, size, mimetype }
+        // ─── STEP 0: Compute file hash for fast scanning ────────────────────────────
+        async function calculateFileSHA256(file) {
+            const arrayBuffer = await file.arrayBuffer();
+            const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+            return hashHex;
         }
+
+        async function checkVirusTotalHash(hash) {
+            try {
+                const response = await fetch(`https://www.virustotal.com/api/v3/files/${hash}`, {
+                    method: "GET",
+                    headers: { "x-apikey": VIRUSTOTAL_API_KEY }
+                });
+                if (response.status === 404) {
+                    return null;
+                }
+                if (!response.ok) {
+                    throw new Error(`HTTP error ${response.status}`);
+                }
+                const data = await response.json();
+                if (data && data.data && data.data.attributes && data.data.attributes.last_analysis_stats) {
+                    return data.data.attributes.last_analysis_stats;
+                }
+                return null;
+            } catch (err) {
+                console.warn("VirusTotal hash lookup failed:", err);
+                return null;
+            }
+        }
+
+
 
         // ─── STEP 2: Scan file with VirusTotal ──────────────────────────────────────
         async function scanWithVirusTotal(file) {
@@ -3402,8 +3429,16 @@
 
             // ─── STEP 3: Poll for scan result ─────────────────────────────────────────
             let result = null;
-            for (let i = 0; i < 10; i++) {
-                await new Promise((r) => setTimeout(r, 5000)); // wait 5 seconds
+            for (let i = 0; i < 30; i++) {
+                const reportStatus = $('scan-report-status');
+                if (reportStatus) {
+                    reportStatus.innerHTML = `
+                        <span class="dot pulse" style="background-color: var(--amber);"></span>
+                        <span style="color: var(--amber);">Scanning: Analysing threat parameters (${i + 1}/30)...</span>
+                    `;
+                }
+
+                await new Promise((r) => setTimeout(r, 1500)); // wait 1.5 seconds
 
                 const resultRes = await fetch(
                     `https://www.virustotal.com/api/v3/analyses/${analysisId}`,
@@ -3439,97 +3474,167 @@
             $('schips').textContent = fmt(f.size);
             $('schip').style.display = 'flex';
 
-            // Reset and show scan UI and report card
+            // Reset and show report card (keep top scan status box hidden)
             const scanBox = $('scan-status-box');
-            const scanText = $('scan-status-text');
-            const reportCard = $('scan-report-card');
-            const reportFilestack = $('scan-report-filestack');
-            const reportVt = $('scan-report-vt');
+            if (scanBox) scanBox.style.display = 'none';
 
-            reportCard.style.display = 'none';
-            reportFilestack.textContent = "-";
-            reportFilestack.href = "#";
+            const reportCard = $('scan-report-card');
+            const reportVt = $('scan-report-vt');
+            const reportStatus = $('scan-report-status');
+            const reportHashRow = $('scan-report-hash-row');
+            const reportHash = $('scan-report-hash');
+
+            reportCard.style.display = 'block';
             reportVt.textContent = "-";
             reportVt.style.color = "";
+            if (reportHashRow) reportHashRow.style.display = 'none';
+            if (reportHash) reportHash.textContent = "-";
 
-            scanBox.style.display = 'flex';
-            scanBox.className = 'st info';
-            scanText.textContent = "🛡️ Scanner 1: Uploading backup to Filestack...";
-
-            // Enable scanning laser animation on drop container
+            // Initializing scanning laser animation on drop container
             const sdropEl = $('sdrop');
-            sdropEl.className = 'drop scanning-active scanning-upload';
+            sdropEl.className = 'drop scanning-active scanning-virus';
 
-            let filestackUrl = null;
+            // Update status inside card: Calculating file hash
+            if (reportStatus) {
+                reportStatus.innerHTML = `
+                    <span class="dot pulse" style="background-color: var(--amber);"></span>
+                    <span style="color: var(--amber);">Initializing: Calculating file hash...</span>
+                `;
+            }
+
             let scanStats = null;
+            let fileHash = null;
 
             console.log("\n==================================================");
             console.log(`📁 REAL-TIME SCANNING: ${f.name} (${fmt(f.size)})`);
             console.log("==================================================");
 
             try {
-                // Step 1: Upload to Filestack
-                console.log("⬆️ [Scanner 1] Uploading to Filestack...");
-                const filestackRes = await uploadToFilestack(f);
-                filestackUrl = filestackRes.url;
+                // Step 0: Compute SHA-256 hash
+                fileHash = await calculateFileSHA256(f);
+                console.log(`🔑 File SHA-256: ${fileHash}`);
+                if (reportHashRow) reportHashRow.style.display = 'flex';
+                if (reportHash) reportHash.textContent = fileHash;
 
-                // Show intermediate link in report card
-                reportCard.style.display = 'block';
-                reportFilestack.textContent = filestackUrl;
-                reportFilestack.href = filestackUrl;
-                console.log("🔗 [Scanner 1] Cloud URL generated:", filestackUrl);
+                // Step 0.5: Fast scan lookup via VirusTotal
+                if (reportStatus) {
+                    reportStatus.innerHTML = `
+                        <span class="dot pulse" style="background-color: var(--amber);"></span>
+                        <span style="color: var(--amber);">Scanning: Querying threat database by hash...</span>
+                    `;
+                }
+                
+                console.log("🔍 Checking VirusTotal database for hash...");
+                const cachedStats = await checkVirusTotalHash(fileHash);
 
-                // Switch laser color to blue for VirusTotal scanning
-                sdropEl.className = 'drop scanning-active scanning-virus';
-
-                // Step 2: Scan with VirusTotal
-                scanText.textContent = "🛡️ Scanner 2: Running threat analysis with VirusTotal...";
-                console.log("\n🛡️ [Scanner 2] Uploading & scanning with VirusTotal...");
-                const vtStats = await scanWithVirusTotal(f);
-                scanStats = vtStats;
-
-                // Disable scanning laser animation
-                sdropEl.className = 'drop';
-
-                if (vtStats) {
-                    console.log("\n📊 [Scanner 2] VirusTotal Scan Results:");
-                    console.log(`   - Malicious:  ${vtStats.malicious}`);
-                    console.log(`   - Suspicious: ${vtStats.suspicious}`);
-                    console.log(`   - Undetected: ${vtStats.undetected}`);
-                    console.log(`   - Harmless:   ${vtStats.harmless}`);
-                    console.log("==================================================");
-
-                    const vtDetail = `Clean: ${vtStats.undetected} engines OK · Harmless: ${vtStats.harmless}`;
-                    reportVt.textContent = vtDetail;
-                    reportVt.style.color = "var(--green)";
-
-                    if (vtStats.malicious > 0) {
-                        scanBox.className = 'st err';
-                        scanText.textContent = `🚨 Threat detected: ${vtStats.malicious} engine(s) flagged this file as malicious! Transfer blocked.`;
-                        reportVt.textContent = `CRITICAL: ${vtStats.malicious} malicious flag(s) found!`;
+                if (cachedStats) {
+                    console.log("⚡ [Fast Scan] Match found in VirusTotal!");
+                    scanStats = cachedStats;
+                    
+                    if (scanStats.malicious > 0) {
+                        // File is malicious, block transfer immediately!
+                        sdropEl.className = 'drop';
+                        if (reportStatus) {
+                            reportStatus.innerHTML = `
+                                <span class="dot" style="background-color: var(--red);"></span>
+                                <span style="color: var(--red);">STATUS: NOT SAFE (MALICIOUS THREAT)</span>
+                            `;
+                        }
+                        reportVt.textContent = `CRITICAL: ${scanStats.malicious} malicious flag(s) found! (Instant Hash Match)`;
                         reportVt.style.color = "var(--red)";
                         status('speer', 'err', 'Transfer blocked: File is flagged as malicious.');
                         return; // BLOCKED
-                    } else if (vtStats.suspicious > 0) {
-                        scanBox.className = 'st warn';
-                        scanText.textContent = `⚠️ Caution: ${vtStats.suspicious} engine(s) flagged this file as suspicious. Proceeding with transfer...`;
-                        reportVt.textContent = `Warning: ${vtStats.suspicious} suspicious flag(s) found.`;
-                        reportVt.style.color = "var(--amber)";
-                    } else {
-                        scanBox.className = 'st ok';
-                        scanText.textContent = `✅ VirusTotal Scan: File is clean!`;
                     }
+
+                    // File is clean
+                    sdropEl.className = 'drop';
+                    if (reportStatus) {
+                        reportStatus.innerHTML = `
+                            <span class="dot" style="background-color: var(--green);"></span>
+                            <span style="color: var(--green);">STATUS: SAFE (FILE SECURE)</span>
+                        `;
+                    }
+                    const vtDetail = `Clean: ${scanStats.undetected} engines OK · Harmless: ${scanStats.harmless} (Instant Hash Match)`;
+                    reportVt.textContent = vtDetail;
+                    reportVt.style.color = "var(--green)";
                 } else {
-                    scanBox.className = 'st warn';
-                    scanText.textContent = `⚠️ Scan timeout. Proceeding with transfer...`;
-                    reportVt.textContent = "Scan timed out (API timeout).";
-                    reportVt.style.color = "var(--amber)";
+                    // Fallback to uploading and scanning
+                    console.log("⚠️ Hash not found. Proceeding with slow scan fallback...");
+                    
+                    // Step 1: Upload to VirusTotal and Poll
+                    if (reportStatus) {
+                        reportStatus.innerHTML = `
+                            <span class="dot pulse" style="background-color: var(--amber);"></span>
+                            <span style="color: var(--amber);">Scanning: Analysing threat parameters...</span>
+                        `;
+                    }
+                    console.log("\n🛡️ [Scanner] Uploading & scanning with VirusTotal...");
+                    const vtStats = await scanWithVirusTotal(f);
+                    scanStats = vtStats;
+
+                    // Disable scanning laser animation
+                    sdropEl.className = 'drop';
+
+                    if (vtStats) {
+                        console.log("\n📊 VirusTotal Scan Results:");
+                        console.log(`   - Malicious:  ${vtStats.malicious}`);
+                        console.log(`   - Suspicious: ${vtStats.suspicious}`);
+                        console.log(`   - Undetected: ${vtStats.undetected}`);
+                        console.log(`   - Harmless:   ${vtStats.harmless}`);
+                        console.log("==================================================");
+
+                        const vtDetail = `Clean: ${vtStats.undetected} engines OK · Harmless: ${vtStats.harmless}`;
+                        reportVt.textContent = vtDetail;
+                        reportVt.style.color = "var(--green)";
+
+                        if (vtStats.malicious > 0) {
+                            if (reportStatus) {
+                                reportStatus.innerHTML = `
+                                    <span class="dot" style="background-color: var(--red);"></span>
+                                    <span style="color: var(--red);">STATUS: NOT SAFE (MALICIOUS THREAT)</span>
+                                `;
+                            }
+                            reportVt.textContent = `CRITICAL: ${vtStats.malicious} malicious flag(s) found!`;
+                            reportVt.style.color = "var(--red)";
+                            status('speer', 'err', 'Transfer blocked: File is flagged as malicious.');
+                            return; // BLOCKED
+                        } else if (vtStats.suspicious > 0) {
+                            if (reportStatus) {
+                                reportStatus.innerHTML = `
+                                    <span class="dot" style="background-color: var(--amber);"></span>
+                                    <span style="color: var(--amber);">STATUS: SUSPICIOUS</span>
+                                `;
+                            }
+                            reportVt.textContent = `Warning: ${vtStats.suspicious} suspicious flag(s) found.`;
+                            reportVt.style.color = "var(--amber)";
+                        } else {
+                            if (reportStatus) {
+                                reportStatus.innerHTML = `
+                                    <span class="dot" style="background-color: var(--green);"></span>
+                                    <span style="color: var(--green);">STATUS: SAFE (FILE SECURE)</span>
+                                `;
+                            }
+                        }
+                    } else {
+                        if (reportStatus) {
+                            reportStatus.innerHTML = `
+                                <span class="dot" style="background-color: var(--amber);"></span>
+                                <span style="color: var(--amber);">STATUS: SCAN TIMED OUT</span>
+                            `;
+                        }
+                        reportVt.textContent = "Scan timed out (API timeout).";
+                        reportVt.style.color = "var(--amber)";
+                    }
                 }
             } catch (err) {
                 sdropEl.className = 'drop';
                 console.error("❌ Scan failed:", err);
-                scanBox.className = 'st warn';
-                scanText.textContent = `⚠️ Scan skipped (${err.message}). Proceeding with transfer...`;
+                if (reportStatus) {
+                    reportStatus.innerHTML = `
+                        <span class="dot" style="background-color: var(--amber);"></span>
+                        <span style="color: var(--amber);">STATUS: SCAN SKIPPED / FAILED</span>
+                    `;
+                }
                 reportVt.textContent = `Scan failed: ${err.message}`;
                 reportVt.style.color = "var(--red)";
             }
